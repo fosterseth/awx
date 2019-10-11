@@ -119,13 +119,6 @@ def newgetattr(self, attr):
     #setattr(self, attr, val)
     return val
 
-def newgetattribute(self, attr):
-    from django.conf import settings
-    if attr in settings.OAUTH2_PROVIDER:
-        return settings.OAUTH2_PROVIDER[attr]
-    else:
-        return object.__getattribute__(self, attr)
-
 def prepare_env():
     # Update the default settings environment variable based on current mode.
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'awx.settings.%s' % MODE)
@@ -138,13 +131,9 @@ def prepare_env():
     import django.core.management
     django.core.management.find_commands = find_commands
 
-    if 1:
-        import oauth2_provider.settings
-        oauth2_provider.settings.OAuth2ProviderSettings.__getattribute__ = newgetattribute
 
-    if 0:
-        import oauth2_provider.settings
-        oauth2_provider.settings.OAuth2ProviderSettings.__getattr__ = newgetattr
+    import oauth2_provider.settings
+    oauth2_provider.settings.OAuth2ProviderSettings.__getattr__ = newgetattr
 
 
     # Use the AWX_TEST_DATABASE_* environment variables to specify the test
