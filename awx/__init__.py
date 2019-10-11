@@ -81,44 +81,6 @@ def find_commands(management_dir):
     return commands
 
 
-def newgetattr(self, attr):
-    from oauth2_provider.settings import import_from_string, perform_import
-    if attr not in self.defaults.keys():
-        raise AttributeError("Invalid OAuth2Provider setting: %r" % (attr))
-
-    from django.conf import settings
-    try:
-        val  = settings.OAUTH2_PROVIDER[attr]
-    except KeyError:
-        # Fall back to defaults
-        val = self.defaults[attr]
-
-    # Coerce import strings into classes
-    if val and attr in self.import_strings:
-        val = perform_import(val, attr)
-
-    # Overriding special settings
-    if attr == "_SCOPES":
-        val = list(self.SCOPES.keys())
-    if attr == "_DEFAULT_SCOPES":
-        if "__all__" in self.DEFAULT_SCOPES:
-            # If DEFAULT_SCOPES is set to ["__all__"] the whole set of scopes is returned
-            val = list(self._SCOPES)
-        else:
-            # Otherwise we return a subset (that can be void) of SCOPES
-            val = []
-            for scope in self.DEFAULT_SCOPES:
-                if scope in self._SCOPES:
-                    val.append(scope)
-                else:
-                    raise ImproperlyConfigured("Defined DEFAULT_SCOPES not present in SCOPES")
-
-    self.validate_setting(attr, val)
-
-    # Cache the result
-    #setattr(self, attr, val)
-    return val
-
 def newgetattribute(self, attr):
     from django.conf import settings
     if attr in settings.OAUTH2_PROVIDER:
@@ -138,13 +100,9 @@ def prepare_env():
     import django.core.management
     django.core.management.find_commands = find_commands
 
-    if 1:
-        import oauth2_provider.settings
-        oauth2_provider.settings.OAuth2ProviderSettings.__getattribute__ = newgetattribute
 
-    if 0:
-        import oauth2_provider.settings
-        oauth2_provider.settings.OAuth2ProviderSettings.__getattr__ = newgetattr
+    import oauth2_provider.settings
+    oauth2_provider.settings.OAuth2ProviderSettings.__getattribute__ = newgetattribute
 
 
     # Use the AWX_TEST_DATABASE_* environment variables to specify the test
