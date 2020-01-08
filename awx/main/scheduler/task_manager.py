@@ -46,7 +46,7 @@ class TaskManager():
             self.graph[rampart_group.name] = dict(graph=DependencyGraph(rampart_group.name),
                                                   capacity_total=rampart_group.capacity,
                                                   consumed_capacity=0)
-
+        self.cached_capacity = {}
     def is_job_blocked(self, task):
         # TODO: I'm not happy with this, I think blocking behavior should be decided outside of the dependency graph
         #       in the old task manager this was handled as a method on each task object outside of the graph and
@@ -497,6 +497,23 @@ class TaskManager():
             if not found_acceptable_queue:
                 logger.debug("Dependent {} couldn't be scheduled on graph, waiting for next cycle".format(task.log_format))
 
+    def get_instance_remaining_capacity(self, i):
+        capacity = self.cached_capacity.get(i.id, None)
+        if not capacity:
+            self.cached_capacity[i.id] = i.remaining_capacity
+        return self.cached_capacity[i.id]
+
+    def fit_task_to_most_remaining_capacity_instance2(self, rampart_group, task):
+        instance_most_capacity = None
+        for i in rampart_group.instances.filter(capacity__gt=0, enabled=True).order_by('hostname'):
+            if self.get_instance_remaining_capacity(i) >= task.task_impact and \
+                    (instance_most_capacity is None or
+                     self.get_instance_remaining_capacity(i) > self.get_instance_remaining_capacity(instance_most_capacity)):
+                instance_most_capacity = i
+        if instance_most_capacity:
+            self.cached_capacity[i.id] -= task.task_impact
+        return instance_most_capacity
+
     def process_pending_tasks(self, pending_tasks):
         running_workflow_templates = set([wf.unified_job_template_id for wf in self.get_running_workflow_jobs()])
         for task in pending_tasks:
@@ -530,8 +547,9 @@ class TaskManager():
                     logger.debug("Skipping group {}, remaining_capacity {} <= 0".format(
                                  rampart_group.name, remaining_capacity))
                     continue
-
-                execution_instance = rampart_group.fit_task_to_most_remaining_capacity_instance(task)
+                # import sdb
+                # sdb.set_trace()
+                execution_instance = self.fit_task_to_most_remaining_capacity_instance2(rampart_group, task)
                 if execution_instance:
                     logger.debug("Starting {} in group {} instance {} (remaining_capacity={})".format(
                                  task.log_format, rampart_group.name, execution_instance.hostname, remaining_capacity))
@@ -632,6 +650,7 @@ class TaskManager():
 
     def schedule(self):
         # Lock
+        return
         with advisory_lock('task_manager_lock', wait=False) as acquired:
             with transaction.atomic():
                 if acquired is False:
