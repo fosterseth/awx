@@ -455,7 +455,7 @@ class TaskManager():
                 if len(dependencies) > 0:
                     self.capture_chain_failure_dependencies(task, dependencies)
             else:
-                dependencies = list(task.dependent_jobs.all())
+                dependencies = task.dependent_jobs.all()
         return dependencies
 
     def process_dependencies(self, dependent_task, dependency_tasks):
