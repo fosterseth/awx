@@ -101,7 +101,7 @@ from awx.main.scheduler.dag_workflow import WorkflowDAG
 from awx.api.views.mixin import (
     ControlledByScmMixin, InstanceGroupMembershipMixin,
     OrganizationCountsMixin, RelatedJobsPreventDeleteMixin,
-    UnifiedJobDeletionMixin, NoTruncateMixin,
+    UnifiedJobDeletionMixin, NoTruncateMixin, ElapsedTimeMixin,
 )
 from awx.api.views.organization import ( # noqa
     OrganizationList,
@@ -3513,11 +3513,10 @@ class SystemJobTemplateNotificationTemplatesSuccessList(SystemJobTemplateNotific
     relationship = 'notification_templates_success'
 
 
-class JobList(ListAPIView):
+class JobList(ElapsedTimeMixin, ListAPIView):
 
     model = models.Job
     serializer_class = serializers.JobListSerializer
-
 
 class JobDetail(UnifiedJobDeletionMixin, RetrieveDestroyAPIView):
 

@@ -3,6 +3,8 @@
 
 import dateutil
 import logging
+import datetime
+import pytz
 
 from django.db.models import (
     Count,
@@ -278,3 +280,14 @@ class NoTruncateMixin(object):
         if self.request.query_params.get('no_truncate'):
             context.update(no_truncate=True)
         return context
+
+
+class ElapsedTimeMixin(object):
+    def filter_queryset(self, *args, **kwargs):
+        sq = super().filter_queryset(*args, **kwargs)
+        status = self.request.query_params.get('status', None)
+        if status == "running":
+            for key, values in self.request.query_params.lists():
+                if 'elapsed__' in key:
+                    sq = sq.filter(started__lt=(datetime.datetime.now(pytz.utc) - datetime.timedelta(seconds=float(self.request.query_params[key]))))
+        return sq
