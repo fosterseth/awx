@@ -21,6 +21,8 @@ from awx.main.signals import (
     disable_computed_fields
 )
 
+from awx.main.management.commands.deletion import Collector
+
 
 class Command(BaseCommand):
     '''
@@ -58,27 +60,16 @@ class Command(BaseCommand):
                             help='Remove workflow jobs')
 
     def cleanup_jobs(self):
-        #jobs_qs = Job.objects.exclude(status__in=('pending', 'running'))
-        #jobs_qs = jobs_qs.filter(created__lte=self.cutoff)
         skipped, deleted = 0, 0
-        jobs = Job.objects.filter(created__lt=self.cutoff)
-        for job in jobs.iterator():
-            job_display = '"%s" (%d host summaries, %d events)' % \
-                          (str(job),
-                           job.job_host_summaries.count(), job.job_events.count())
-            if job.status in ('pending', 'waiting', 'running'):
-                action_text = 'would skip' if self.dry_run else 'skipping'
-                self.logger.debug('%s %s job %s', action_text, job.status, job_display)
-                skipped += 1
-            else:
-                action_text = 'would delete' if self.dry_run else 'deleting'
-                self.logger.info('%s %s', action_text, job_display)
-                if not self.dry_run:
-                    job.delete()
-                deleted += 1
-
+        collector = Collector('default', self.logger)
+        jobs_to_delete = Job.objects.filter(created__lt=self.cutoff)
+        deleted += jobs_to_delete.count()
+        self.logger.info("deleting total of %d jobs", jobs_to_delete.count())
+        collector.collect(jobs_to_delete)
+        collector.delete()
         skipped += Job.objects.filter(created__gte=self.cutoff).count()
         return skipped, deleted
+
 
     def cleanup_ad_hoc_commands(self):
         skipped, deleted = 0, 0
