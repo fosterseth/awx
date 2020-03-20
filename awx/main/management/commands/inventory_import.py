@@ -198,7 +198,7 @@ class AnsibleInventoryLoader(object):
                 self.method, proc.returncode, stdout, stderr))
 
         for line in stderr.splitlines():
-            logger.error(line)
+            logger.debug(line)
         try:
             data = json.loads(stdout)
             if not isinstance(data, dict):
