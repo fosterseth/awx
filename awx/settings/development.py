@@ -44,16 +44,16 @@ SHELL_PLUS_PRINT_SQL = False
 
 # show colored logs in the dev environment
 # to disable this, set `COLOR_LOGS = False` in awx/settings/local_settings.py
-LOGGING['handlers']['console']['()'] = 'awx.main.utils.handlers.ColorHandler'  # noqa
+# LOGGING['handlers']['console']['()'] = 'awx.main.utils.handlers.ColorHandler'  # noqa
 # task system does not propagate to AWX, so color log these too
-LOGGING['handlers']['task_system'] = LOGGING['handlers']['console'].copy()  # noqa
+# LOGGING['handlers']['task_system'] = LOGGING['handlers']['console'].copy()  # noqa
 COLOR_LOGS = True
 
 # Pipe management playbook output to console
-LOGGING['loggers']['awx.isolated.manager.playbooks']['propagate'] = True  # noqa
+# LOGGING['loggers']['awx.isolated.manager.playbooks']['propagate'] = True  # noqa
 
 # celery is annoyingly loud when docker containers start
-LOGGING['loggers'].pop('celery', None)  # noqa
+# LOGGING['loggers'].pop('celery', None)  # noqa
 
 ALLOWED_HOSTS = ['*']
 

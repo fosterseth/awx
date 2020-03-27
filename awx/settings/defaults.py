@@ -1025,12 +1025,13 @@ LOGGING = {
         },
         'tower_warnings': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filters': ['require_debug_false', 'dynamic_level_filter'],
+            'class': 'awx.main.logging.QueuedHandler',
+            'filters': [],
             'filename': os.path.join(LOG_ROOT, 'tower.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
+            'maxBytes': 5000, # 5 MB
             'backupCount': 5,
             'formatter':'simple',
+            'level': 'INFO',
         },
         'callback_receiver': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
@@ -1043,12 +1044,13 @@ LOGGING = {
         },
         'dispatcher': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filters': ['require_debug_false', 'dynamic_level_filter'],
+            'class': 'awx.main.logging.QueuedHandler',
+            'filters': [],
             'filename': os.path.join(LOG_ROOT, 'dispatcher.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
+            'maxBytes': 5000, # 5 MB
             'backupCount': 5,
             'formatter':'dispatcher',
+            'level':'INFO'
         },
         'celery.beat': {
             'class':'logging.StreamHandler',
@@ -1061,12 +1063,13 @@ LOGGING = {
         },
         'task_system': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filters': ['require_debug_false', 'dynamic_level_filter'],
+            'class': 'awx.main.loggers.MultiProcessingLog',
+            'filters': [],
             'filename': os.path.join(LOG_ROOT, 'task_system.log'),
-            'maxBytes': 1024 * 1024 * 5, # 5 MB
+            'maxBytes': 5000, # 5 MB
             'backupCount': 5,
             'formatter':'simple',
+            'level':'INFO'
         },
         'management_playbooks': {
             'level': 'DEBUG',
