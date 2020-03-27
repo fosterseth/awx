@@ -1025,7 +1025,7 @@ LOGGING = {
         },
         'tower_warnings': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'awx.main.logging.QueuedHandler',
+            'class': 'awx.main.logging_handlers.QueuedHandler',
             'filters': [],
             'filename': os.path.join(LOG_ROOT, 'tower.log'),
             'maxBytes': 5000, # 5 MB
@@ -1044,7 +1044,7 @@ LOGGING = {
         },
         'dispatcher': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'awx.main.logging.QueuedHandler',
+            'class': 'awx.main.logging_handlers.QueuedHandler',
             'filters': [],
             'filename': os.path.join(LOG_ROOT, 'dispatcher.log'),
             'maxBytes': 5000, # 5 MB
@@ -1063,7 +1063,7 @@ LOGGING = {
         },
         'task_system': {
             # don't define a level here, it's set by settings.LOG_AGGREGATOR_LEVEL
-            'class': 'awx.main.loggers.MultiProcessingLog',
+            'class': 'awx.main.logging_handlers.QueuedHandler',
             'filters': [],
             'filename': os.path.join(LOG_ROOT, 'task_system.log'),
             'maxBytes': 5000, # 5 MB
