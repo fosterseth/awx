@@ -72,7 +72,7 @@ class TaskManager():
 
     def get_tasks(self, status_list=('pending', 'waiting', 'running')):
         jobs = [j for j in Job.objects.filter(status__in=status_list).select_related(
-            'organization', 'inventory', 'job_template').prefetch_related(
+            'organization', 'inventory', 'job_template', 'global_instance_group').prefetch_related(
                                                             'organization__instance_groups',
                                                             'inventory__instance_groups',
                                                             'job_template__instance_groups')]
