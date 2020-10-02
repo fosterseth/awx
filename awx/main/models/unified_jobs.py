@@ -708,6 +708,18 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
         on_delete=polymorphic.SET_NULL,
         help_text=_('The Instance group the job was run under'),
     )
+
+    global_instance_group = models.ForeignKey(
+        'InstanceGroup',
+        related_name='global_instance_group',
+        blank=True,
+        null=True,
+        to_field='name',
+        default='tower',
+        on_delete=polymorphic.SET_NULL,
+        help_text=_('The default instance group'),
+    )
+
     organization = models.ForeignKey(
         'Organization',
         blank=True,
@@ -862,7 +874,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
             self.unified_job_template = self._get_parent_instance()
             if 'unified_job_template' not in update_fields:
                 update_fields.append('unified_job_template')
-        
+
         if self.cancel_flag and not self.canceled_on:
             # Record the 'canceled' time.
             self.canceled_on = now()
@@ -1418,11 +1430,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
 
     @property
     def global_instance_groups(self):
-        from awx.main.models.ha import InstanceGroup
-        default_instance_group = InstanceGroup.objects.filter(name='tower')
-        if default_instance_group.exists():
-            return [default_instance_group.first()]
-        return []
+        return [self.global_instance_group]
 
     def awx_meta_vars(self):
         '''
