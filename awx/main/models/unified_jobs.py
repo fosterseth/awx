@@ -1284,7 +1284,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
     def pre_start(self, **kwargs):
         if not self.can_start:
             self.job_explanation = u'%s is not in a startable state: %s, expecting one of %s' % (self._meta.verbose_name, self.status, str(('new', 'waiting')))
-            self.save(update_fields=['job_explanation'])
+            #self.save(update_fields=['job_explanation'])
             return (False, None)
 
         # verify that any associated credentials aren't missing required field data
@@ -1301,7 +1301,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
                 credential.name,
                 ', '.join(sorted(missing_credential_inputs))
             )
-            self.save(update_fields=['job_explanation'])
+            #self.save(update_fields=['job_explanation'])
             return (False, None)
 
         needed = self.get_passwords_needed_to_start()
@@ -1318,7 +1318,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
         if not all(opts.values()):
             missing_fields = ', '.join([k for k,v in opts.items() if not v])
             self.job_explanation = u'Missing needed fields: %s.' % missing_fields
-            self.save(update_fields=['job_explanation'])
+            #self.save(update_fields=['job_explanation'])
             return (False, None)
 
         if 'extra_vars' in kwargs:

@@ -41,6 +41,7 @@ from awx.main.utils import decrypt_field
 
 
 logger = logging.getLogger('awx.main.scheduler')
+logging.disable(logging.CRITICAL)
 
 
 class TaskManager():
@@ -63,6 +64,8 @@ class TaskManager():
         # will no longer be started and will be started on the next task manager cycle.
         self.start_task_limit = settings.START_TASK_LIMIT
 
+        self.tasks_to_save = []
+        self.fields_to_save = ['job_explanation', 'controller_node', 'execution_node', 'instance_group', 'celery_task_id', 'status']
     def after_lock_init(self):
         '''
         Init AFTER we know this instance of the task manager will run because the lock is acquired.
@@ -104,7 +107,8 @@ class TaskManager():
             'organization', 'inventory', 'job_template', 'global_instance_group').prefetch_related(
                                                             'organization__instance_groups',
                                                             'inventory__instance_groups',
-                                                            'job_template__instance_groups')]
+                                                            'job_template__instance_groups',
+                                                            'credentials__credential_type')]
         inventory_updates_qs = InventoryUpdate.objects.filter(
             status__in=status_list).exclude(source='file').prefetch_related('inventory_source', 'instance_group')
         inventory_updates = [i for i in inventory_updates_qs]
@@ -260,7 +264,8 @@ class TaskManager():
             if task.job_explanation:
                 task.job_explanation += ' '
             task.job_explanation += 'Task failed pre-start check.'
-            task.save()
+            # task.save()
+            self.tasks_to_save.append(task)
             # TODO: run error handler to fail sub-tasks and send notifications
         else:
             if type(task) is WorkflowJob:
@@ -313,7 +318,8 @@ class TaskManager():
                              task.log_format, task.instance_group_id, task.execution_node))
             with disable_activity_stream():
                 task.celery_task_id = str(uuid.uuid4())
-                task.save()
+                self.tasks_to_save.append(task)
+                # task.save()
 
             if rampart_group is not None:
                 self.consume_capacity(task, rampart_group.name)
@@ -596,6 +602,9 @@ class TaskManager():
     def get_remaining_capacity(self, instance_group):
         return (self.graph[instance_group]['capacity_total'] - self.graph[instance_group]['consumed_capacity'])
 
+    def bulk_update_tasks(self):
+        UnifiedJob.objects.bulk_update(self.tasks_to_save, self.fields_to_save)
+
     def process_tasks(self, all_sorted_tasks):
         running_tasks = [t for t in all_sorted_tasks if t.status in ['waiting', 'running']]
 
@@ -608,6 +617,7 @@ class TaskManager():
         dependencies = self.generate_dependencies(undeped_tasks)
         self.process_pending_tasks(dependencies)
         self.process_pending_tasks(pending_tasks)
+        self.bulk_update_tasks()
 
     def _schedule(self):
         finished_wfjs = []
