@@ -41,7 +41,7 @@ from awx.main.utils import decrypt_field
 
 
 logger = logging.getLogger('awx.main.scheduler')
-logging.disable(logging.CRITICAL)
+# logging.disable(logging.CRITICAL)
 
 
 class TaskManager():
@@ -65,7 +65,7 @@ class TaskManager():
         self.start_task_limit = settings.START_TASK_LIMIT
 
         self.tasks_to_save = []
-        self.fields_to_save = ['job_explanation', 'controller_node', 'execution_node', 'instance_group', 'celery_task_id', 'status']
+        self.fields_to_save = ['job_explanation', 'controller_node', 'execution_node', 'instance_group', 'celery_task_id']#, 'status']
     def after_lock_init(self):
         '''
         Init AFTER we know this instance of the task manager will run because the lock is acquired.
@@ -603,7 +603,15 @@ class TaskManager():
         return (self.graph[instance_group]['capacity_total'] - self.graph[instance_group]['consumed_capacity'])
 
     def bulk_update_tasks(self):
+        for task in self.tasks_to_save:
+            task.save(do_save=False, update_fields=self.fields_to_save)
         UnifiedJob.objects.bulk_update(self.tasks_to_save, self.fields_to_save)
+        have_seen = set()
+        for task in reversed(self.tasks_to_save):
+            parent_instance = task._get_parent_instance()
+            if parent_instance not in have_seen:
+                task._update_parent_instance()
+                have_seen.add(parent_instance)
 
     def process_tasks(self, all_sorted_tasks):
         running_tasks = [t for t in all_sorted_tasks if t.status in ['waiting', 'running']]

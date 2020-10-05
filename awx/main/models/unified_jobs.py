@@ -820,6 +820,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
         """Save the job, with current status, to the database.
         Ensure that all data is consistent before doing so.
         """
+        do_save = kwargs.get('do_save', True)
         # If update_fields has been specified, add our field names to it,
         # if it hasn't been specified, then we're just doing a normal save.
         update_fields = kwargs.get('update_fields', [])
@@ -829,10 +830,10 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
 
         # If this job already exists in the database, retrieve a copy of
         # the job in its prior state.
-        if self.pk:
-            self_before = self.__class__.objects.get(pk=self.pk)
-            if self_before.status != self.status:
-                status_before = self_before.status
+        # if self.pk:
+        #     self_before = self.__class__.objects.get(pk=self.pk)
+        #     if self_before.status != self.status:
+        #         status_before = self_before.status
 
         # Sanity check: Is this a failure? Ensure that the failure value
         # matches the status.
@@ -880,15 +881,14 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
             self.canceled_on = now()
             if 'canceled_on' not in update_fields:
                 update_fields.append('canceled_on')
+        update_fields.append('status')
         # Okay; we're done. Perform the actual save.
-        result = super(UnifiedJob, self).save(*args, **kwargs)
-
-        # If status changed, update the parent instance.
-        if self.status != status_before:
-            self._update_parent_instance()
-
-        # Done.
-        return result
+        if do_save:
+            result = super(UnifiedJob, self).save(*args, **kwargs)
+            # If status changed, update the parent instance.
+            if self.status != status_before:
+                self._update_parent_instance()
+            return result
 
     def copy_unified_job(self, _eager_fields=None, **new_prompts):
         '''
