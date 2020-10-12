@@ -1,6 +1,7 @@
 postgresqlUsername: {{ pg_username }}
 postgresqlPassword: {{ pg_password }}
 postgresqlDatabase: {{ pg_database }}
+postgresqlMaxConnections: 450
 persistence:
   size: {{ pg_volume_capacity|default('5') }}Gi
 {% if pg_persistence_storageClass is defined %}

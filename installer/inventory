@@ -18,9 +18,9 @@ dockerhub_base=ansible
 # openshift_pg_emptydir=True
 
 # Kubernetes Install
-# kubernetes_context=test-cluster
-# kubernetes_namespace=awx
-# kubernetes_web_svc_type=NodePort
+kubernetes_context=minikube
+kubernetes_namespace=sbf
+kubernetes_web_svc_type=NodePort
 # Optional Kubernetes Variables
 # pg_image_registry=docker.io
 # pg_serviceaccount=awx
