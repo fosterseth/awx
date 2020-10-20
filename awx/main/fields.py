@@ -708,7 +708,7 @@ class CredentialInputField(JSONSchemaField):
 
             if model_instance.has_encrypted_ssh_key_data and not value.get('ssh_key_unlock'):
                 errors['ssh_key_unlock'] = [_('must be set when SSH key is encrypted.')]
-            
+
             if all([
                 model_instance.inputs.get('ssh_key_data'),
                 value.get('ssh_key_unlock'),
@@ -1020,10 +1020,23 @@ class OrderedManyToManyDescriptor(ManyToManyDescriptor):
 
         def add_custom_queryset_to_many_related_manager(many_related_manage_cls):
             class OrderedManyRelatedManager(many_related_manage_cls):
-                def get_queryset(self):
-                    return super(OrderedManyRelatedManager, self).get_queryset().order_by(
+                def _apply_rel_ordering(self, queryset):
+                    return queryset.order_by(
                         '%s__position' % self.through._meta.model_name
                     )
+
+                def get_queryset(self):
+                    try:
+                        return self.instance._prefetched_objects_cache[self.prefetch_cache_name]
+                    except (AttributeError, KeyError):
+                        queryset = super().get_queryset()
+                        return self._apply_rel_ordering(queryset)
+
+                def get_prefetch_queryset(self, instances, queryset=None):
+                    # Apply the same ordering for prefetch ones
+                    result = super().get_prefetch_queryset(instances, queryset)
+                    return (self._apply_rel_ordering(result[0]),) + result[1:]
+
 
             return OrderedManyRelatedManager
 
