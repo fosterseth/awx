@@ -2,15 +2,16 @@
 set +x
 
 # Wait for the databases to come up
-ansible -i "127.0.0.1," -c local -v -m wait_for -a "host=postgres port=5432" all
-ansible -i "127.0.0.1," -c local -v -m wait_for -a "path=/var/run/redis/redis.sock" all
+while ! nc -z postgres 5432; do
+    sleep 0.1
+done
+while ! nc -z -U /var/run/redis/redis.sock; do
+    sleep 0.1
+done
 
-# In case AWX in the container wants to connect to itself, use "docker exec" to attach to the container otherwise
-# TODO: FIX
-#/etc/init.d/ssh start
-
-ansible -i "127.0.0.1," -c local -v -m postgresql_user --become-user postgres -a "name=awx-dev password=AWXsome1 encrypted=yes login_user=postgres login_password=postgrespass login_host=postgres" all
-ansible -i "127.0.0.1," -c local -v -m postgresql_db --become-user postgres -a "name=awx-dev owner=awx-dev login_user=postgres login_password=postgrespass login_host=postgres" all
+# # In case AWX in the container wants to connect to itself, use "docker exec" to attach to the container otherwise
+# # TODO: FIX
+# #/etc/init.d/ssh start
 
 # Move to the source directory so we can bootstrap
 if [ -f "/awx_devel/manage.py" ]; then

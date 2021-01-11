@@ -14,10 +14,6 @@ data:
 
     source /etc/tower/conf.d/environment.sh
 
-    ANSIBLE_REMOTE_TEMP=/tmp ANSIBLE_LOCAL_TEMP=/tmp ansible -i "127.0.0.1," -c local -v -m wait_for -a "host=$DATABASE_HOST port=$DATABASE_PORT" all
-    ANSIBLE_REMOTE_TEMP=/tmp ANSIBLE_LOCAL_TEMP=/tmp ansible -i "127.0.0.1," -c local -v -m wait_for -a "path=/var/run/redis/redis.sock" all
-
-
     if [ -z "$AWX_SKIP_MIGRATIONS" ]; then
         awx-manage migrate --noinput
     fi
@@ -45,12 +41,8 @@ data:
 
     source /etc/tower/conf.d/environment.sh
 
-    ANSIBLE_REMOTE_TEMP=/tmp ANSIBLE_LOCAL_TEMP=/tmp ansible -i "127.0.0.1," -c local -v -m wait_for -a "host=$DATABASE_HOST port=$DATABASE_PORT" all
-    ANSIBLE_REMOTE_TEMP=/tmp ANSIBLE_LOCAL_TEMP=/tmp ansible -i "127.0.0.1," -c local -v -m wait_for -a "path=/var/run/redis/redis.sock" all
-
     awx-manage collectstatic --noinput --clear
 
     unset $(cut -d = -f -1 /etc/tower/conf.d/environment.sh)
 
     supervisord -c /etc/supervisord.conf
-
