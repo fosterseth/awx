@@ -42,7 +42,7 @@ from awx.main.utils import decrypt_field
 
 
 logger = logging.getLogger('awx.main.scheduler')
-
+logger_job_life_cycle = logging.getLogger('awx.main.job_life_cycle')
 
 class TaskManager():
 
@@ -312,6 +312,7 @@ class TaskManager():
             with disable_activity_stream():
                 task.celery_task_id = str(uuid.uuid4())
                 task.save()
+                logger_job_life_cycle.info("{}-{} waiting".format(task.unified_job_template.name, task.id))
 
             if rampart_group is not None:
                 self.consume_capacity(task, rampart_group.name)
@@ -450,6 +451,7 @@ class TaskManager():
     def generate_dependencies(self, undeped_tasks):
         created_dependencies = []
         for task in undeped_tasks:
+            logger_job_life_cycle.info("{}-{} acknowledged".format(task.unified_job_template.name, task.id))
             dependencies = []
             if not type(task) is Job:
                 continue
@@ -493,6 +495,7 @@ class TaskManager():
             if self.start_task_limit <= 0:
                 break
             if self.is_job_blocked(task):
+                logger_job_life_cycle.info("{}-{} blocked".format(task.unified_job_template.name, task.id))
                 logger.debug("{} is blocked from running".format(task.log_format))
                 continue
             preferred_instance_groups = task.preferred_instance_groups
@@ -515,6 +518,7 @@ class TaskManager():
 
                 remaining_capacity = self.get_remaining_capacity(rampart_group.name)
                 if not rampart_group.is_containerized and self.get_remaining_capacity(rampart_group.name) <= 0:
+                    logger_job_life_cycle.info("{}-{} needs capacity".format(task.unified_job_template.name, task.id))
                     logger.debug("Skipping group {}, remaining_capacity {} <= 0".format(
                                  rampart_group.name, remaining_capacity))
                     continue

@@ -827,6 +827,12 @@ LOGGING = {
     },
     'handlers': {
         'console': {
+            '()': 'logging.NullHandler',
+            'level': 'DEBUG',
+            'filters': ['require_debug_true_or_test'],
+            'formatter': 'simple',
+        },
+        'console2':{
             '()': 'logging.StreamHandler',
             'level': 'DEBUG',
             'filters': ['require_debug_true_or_test'],
@@ -942,6 +948,10 @@ LOGGING = {
         },
     },
     'loggers': {
+        'awx.main.job_life_cycle': {
+            'handlers': ['console2'],
+            'level': 'INFO',
+        },
         'django': {
             'handlers': ['console'],
         },

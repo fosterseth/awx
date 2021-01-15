@@ -55,7 +55,7 @@ from awx.main.fields import JSONField, AskForField, OrderedManyToManyField
 __all__ = ['UnifiedJobTemplate', 'UnifiedJob', 'StdoutMaxBytesExceeded']
 
 logger = logging.getLogger('awx.main.models.unified_jobs')
-
+logger_job_life_cycle = logging.getLogger('awx.main.job_life_cycle')
 # NOTE: ACTIVE_STATES moved to constants because it is used by parent modules
 
 
@@ -397,6 +397,7 @@ class UnifiedJobTemplate(PolymorphicModel, CommonModelNameNotUnique, Notificatio
             # credentials and labels
             unified_job.save()
 
+        logger_job_life_cycle.info("{}-{} created".format(unified_job.unified_job_template.name, unified_job.id))
         # Labels and credentials copied here
         if validated_kwargs.get('credentials'):
             Credential = UnifiedJob._meta.get_field('credentials').related_model
@@ -862,7 +863,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
             self.unified_job_template = self._get_parent_instance()
             if 'unified_job_template' not in update_fields:
                 update_fields.append('unified_job_template')
-        
+
         if self.cancel_flag and not self.canceled_on:
             # Record the 'canceled' time.
             self.canceled_on = now()
