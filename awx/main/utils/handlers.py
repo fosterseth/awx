@@ -113,7 +113,7 @@ if settings.COLOR_LOGS is True:
 
             level_map = {
                 logging.DEBUG: (None, 'green', True),
-                logging.INFO: (None, None, True),
+                logging.INFO: (None, 'blue', True),
                 logging.WARNING: (None, 'yellow', True),
                 logging.ERROR: (None, 'red', True),
                 logging.CRITICAL: (None, 'red', True),
