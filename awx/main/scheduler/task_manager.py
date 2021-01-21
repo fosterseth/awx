@@ -42,6 +42,7 @@ from awx.main.utils import decrypt_field
 
 
 logger = logging.getLogger('awx.main.scheduler')
+logger_job_lifecycle = logging.getLogger('job_lifecycle')
 
 
 class TaskManager():
@@ -80,7 +81,7 @@ class TaskManager():
         instances_by_hostname = {i.hostname: i for i in instances_partial}
 
         for rampart_group in InstanceGroup.objects.prefetch_related('instances'):
-            self.graph[rampart_group.name] = dict(graph=DependencyGraph(rampart_group.name),
+            self.graph[rampart_group.name] = dict(graph=DependencyGraph(),
                                                   capacity_total=rampart_group.capacity,
                                                   consumed_capacity=0,
                                                   instances=[])
@@ -93,13 +94,19 @@ class TaskManager():
         #       in the old task manager this was handled as a method on each task object outside of the graph and
         #       probably has the side effect of cutting down *a lot* of the logic from this task manager class
         for g in self.graph:
-            if self.graph[g]['graph'].is_job_blocked(task):
-                return True
+            can_run, blocked_by = self.graph[g]['graph'].can_task_run(task)
+            if not can_run:
+                return True, blocked_by
 
         if not task.dependent_jobs_finished():
-            return True
+            import sdb; sd
+            blocked_by = task.dependent_jobs.first()
+            if blocked_by:
+                return True, f"{type(blocked_by)._meta.model_name}-{blocked_by.id}"
+            else:
+                return True, Nones
 
-        return False
+        return False, None
 
     def get_tasks(self, status_list=('pending', 'waiting', 'running')):
         jobs = [j for j in Job.objects.filter(status__in=status_list).prefetch_related('instance_group')]
@@ -312,6 +319,7 @@ class TaskManager():
             with disable_activity_stream():
                 task.celery_task_id = str(uuid.uuid4())
                 task.save()
+                logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} waiting", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'waiting'})
 
             if rampart_group is not None:
                 self.consume_capacity(task, rampart_group.name)
@@ -450,6 +458,7 @@ class TaskManager():
     def generate_dependencies(self, undeped_tasks):
         created_dependencies = []
         for task in undeped_tasks:
+            logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} acknowledged", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'acknowledged'})
             dependencies = []
             if not type(task) is Job:
                 continue
@@ -492,8 +501,13 @@ class TaskManager():
         for task in pending_tasks:
             if self.start_task_limit <= 0:
                 break
-            if self.is_job_blocked(task):
+            is_blocked, blocked_by = self.is_job_blocked(task)
+            if is_blocked:
                 logger.debug("{} is blocked from running".format(task.log_format))
+                if blocked_by:
+                    logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} blocked by {blocked_by}", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'blocked'})
+                else:
+                    logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} blocked", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'blocked'})
                 continue
             preferred_instance_groups = task.preferred_instance_groups
             found_acceptable_queue = False
@@ -515,6 +529,7 @@ class TaskManager():
 
                 remaining_capacity = self.get_remaining_capacity(rampart_group.name)
                 if not rampart_group.is_containerized and self.get_remaining_capacity(rampart_group.name) <= 0:
+                    logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} needs capacity", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'needs_capacity'})
                     logger.debug("Skipping group {}, remaining_capacity {} <= 0".format(
                                  rampart_group.name, remaining_capacity))
                     continue

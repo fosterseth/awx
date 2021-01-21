@@ -163,7 +163,6 @@ from awx.api.views.webhooks import ( # noqa
 
 
 logger = logging.getLogger('awx.api.views')
-job_lifecycle = logging.getLogger('job_lifecycle')
 
 
 def api_exception_handler(exc, context):
@@ -2426,7 +2425,6 @@ class JobTemplateLaunch(RetrieveAPIView):
                 data['ignored_fields'] = self.sanitize_for_response(serializer._ignored_fields)
                 data.update(serializers.JobSerializer(new_job, context=self.get_serializer_context()).to_representation(new_job))
             headers = {'Location': new_job.get_absolute_url(request)}
-            job_lifecycle.info(f"{new_job} created", extra={'job_id': new_job.id, 'state': 'created'})
             return Response(data, status=status.HTTP_201_CREATED, headers=headers)
 
 

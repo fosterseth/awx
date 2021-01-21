@@ -824,7 +824,7 @@ LOGGING = {
         'dispatcher': {
             'format': '%(asctime)s %(levelname)-8s %(name)s PID:%(process)d %(message)s',
         },
-        'json': {
+        'json2': {
             '()': 'json_log_formatter.JSONFormatter',
         },
     },
@@ -946,10 +946,11 @@ LOGGING = {
         'job_lifecycle': {
             'level': 'INFO',
             'class':'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(LOG_ROOT, 'job_lifecycle.log'),
+            'filename': os.path.join('/awx_devel', 'job_lifecycle.log'),
+            # 'filename': os.path.join(LOG_ROOT, 'job_lifecycle.log'),
             'maxBytes': 1024 * 1024 * 5, # 5 MB
             'backupCount': 5,
-            'formatter': 'json',
+            'formatter': 'json2',
         },
     },
     'loggers': {
