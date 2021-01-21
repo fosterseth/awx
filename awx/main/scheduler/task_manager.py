@@ -99,7 +99,6 @@ class TaskManager():
                 return True, blocked_by
 
         if not task.dependent_jobs_finished():
-            import sdb; sd
             blocked_by = task.dependent_jobs.first()
             if blocked_by:
                 return True, f"{type(blocked_by)._meta.model_name}-{blocked_by.id}"
@@ -505,7 +504,7 @@ class TaskManager():
             if is_blocked:
                 logger.debug("{} is blocked from running".format(task.log_format))
                 if blocked_by:
-                    logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} blocked by {blocked_by}", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'blocked'})
+                    logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} blocked by {blocked_by}", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'blocked', 'blocked_by': blocked_by})
                 else:
                     logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} blocked", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'blocked'})
                 continue

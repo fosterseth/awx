@@ -825,7 +825,7 @@ LOGGING = {
             'format': '%(asctime)s %(levelname)-8s %(name)s PID:%(process)d %(message)s',
         },
         'json2': {
-            '()': 'json_log_formatter.JSONFormatter',
+            '()': 'awx.main.utils.formatters.JobLifeCycleFormatter',
         },
     },
     'handlers': {

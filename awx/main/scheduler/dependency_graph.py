@@ -79,13 +79,15 @@ class DependencyGraph(object):
         return self._get_data_item(self.INVENTORY_SOURCE_UPDATES, job.inventory_source_id)
 
     def can_job_run(self, job):
-        if self._get_data_item(self.PROJECT_UPDATES, job.project_id)[0] is True and \
-                self._get_data_item(self.INVENTORY_UPDATES, job.inventory_id)[0] is True:
-            if job.allow_simultaneous is False:
+        project_block = self._get_data_item(self.PROJECT_UPDATES, job.project_id)
+        if not project_block[0]:
+            return project_block
+        project_block = self._get_data_item(self.INVENTORY_UPDATES, job.inventory_id)
+        if not project_block[0]:
+            return project_block
+        if job.allow_simultaneous is False:
                 return self._get_data_item(self.JOB_TEMPLATE_JOBS, job.job_template_id)
-            else:
-                return (True, None)
-        return (False, None)
+        return (True, None)
 
     def can_workflow_job_run(self, job):
         if job.allow_simultaneous:
