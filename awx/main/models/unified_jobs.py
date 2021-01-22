@@ -397,7 +397,7 @@ class UnifiedJobTemplate(PolymorphicModel, CommonModelNameNotUnique, Notificatio
             # credentials and labels
             unified_job.save()
 
-        logger_job_lifecycle.info(f"{unified_job._meta.model_name}-{unified_job.id} created", extra={'type': unified_job._meta.model_name, 'uname': unified_job.unified_job_template.name, 'job_id': unified_job.id, 'state': 'created'})
+        logger_job_lifecycle.info(f"{unified_job._meta.model_name}-{unified_job.id} created", extra={'type': unified_job._meta.model_name, 'template_name': unified_job.unified_job_template.name, 'job_id': unified_job.id, 'state': 'created'})
         # Labels and credentials copied here
         if validated_kwargs.get('credentials'):
             Credential = UnifiedJob._meta.get_field('credentials').related_model
