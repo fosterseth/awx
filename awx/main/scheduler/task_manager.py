@@ -89,23 +89,21 @@ class TaskManager():
                 if instance.hostname in instances_by_hostname:
                     self.graph[rampart_group.name]['instances'].append(instances_by_hostname[instance.hostname])
 
-    def is_job_blocked(self, task):
+    def job_blocked_by(self, task):
         # TODO: I'm not happy with this, I think blocking behavior should be decided outside of the dependency graph
         #       in the old task manager this was handled as a method on each task object outside of the graph and
         #       probably has the side effect of cutting down *a lot* of the logic from this task manager class
         for g in self.graph:
-            can_run, blocked_by = self.graph[g]['graph'].can_task_run(task)
-            if not can_run:
-                return True, blocked_by
+            blocked_by = self.graph[g]['graph'].task_blocked_by(task)
+            if blocked_by:
+                return blocked_by
 
         if not task.dependent_jobs_finished():
             blocked_by = task.dependent_jobs.first()
             if blocked_by:
-                return True, f"{type(blocked_by)._meta.model_name}-{blocked_by.id}"
-            else:
-                return True, Nones
+                return blocked_by
 
-        return False, None
+        return None
 
     def get_tasks(self, status_list=('pending', 'waiting', 'running')):
         jobs = [j for j in Job.objects.filter(status__in=status_list).prefetch_related('instance_group')]
@@ -500,13 +498,10 @@ class TaskManager():
         for task in pending_tasks:
             if self.start_task_limit <= 0:
                 break
-            is_blocked, blocked_by = self.is_job_blocked(task)
-            if is_blocked:
+            blocked_by = self.job_blocked_by(task)
+            if blocked_by:
                 logger.debug("{} is blocked from running".format(task.log_format))
-                if blocked_by:
-                    logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} blocked by {blocked_by}", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'blocked', 'blocked_by': blocked_by})
-                else:
-                    logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} blocked", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'blocked'})
+                logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} blocked by {blocked_by._meta.model_name}-{blocked_by.id}", extra={'type': task._meta.model_name, 'uname': task.unified_job_template.name, 'job_id': task.id, 'state': 'blocked', 'blocked_by': f"{blocked_by._meta.model_name}-{blocked_by.id}"})
                 continue
             preferred_instance_groups = task.preferred_instance_groups
             found_acceptable_queue = False
