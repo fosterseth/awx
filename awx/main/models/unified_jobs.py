@@ -397,7 +397,11 @@ class UnifiedJobTemplate(PolymorphicModel, CommonModelNameNotUnique, Notificatio
             # credentials and labels
             unified_job.save()
 
-        unified_job.log_lifecycle(f"{unified_job._meta.model_name}-{unified_job.id} created", extra={'type': unified_job._meta.model_name, 'template_name': unified_job.unified_job_template.name, 'task_id': unified_job.id, 'state': 'created'})
+        unified_job.log_lifecycle(f"{unified_job._meta.model_name}-{unified_job.id} created",
+                                  extra={'type': unified_job._meta.model_name,
+                                         'template_name': unified_job.unified_job_template.name,
+                                         'task_id': unified_job.id,
+                                         'state': 'created'})
         # Labels and credentials copied here
         if validated_kwargs.get('credentials'):
             Credential = UnifiedJob._meta.get_field('credentials').related_model
@@ -1491,4 +1495,4 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
         return False
 
     def log_lifecycle(self, message, **extra):
-        logger_job_lifecycle.info(message, **extra)
+        logger_job_lifecycle.debug(message, **extra)

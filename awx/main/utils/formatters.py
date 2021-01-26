@@ -23,6 +23,7 @@ class JobLifeCycleFormatter(json_log_formatter.JSONFormatter):
             extra['exc_info'] = self.formatException(record.exc_info)
         return extra
 
+
 class TimeFormatter(logging.Formatter):
     '''
     Custom log formatter used for inventory imports

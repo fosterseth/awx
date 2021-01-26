@@ -1,5 +1,3 @@
-from django.utils.timezone import now as tz_now
-
 from awx.main.models import (
     Job,
     ProjectUpdate,
@@ -8,6 +6,7 @@ from awx.main.models import (
     AdHocCommand,
     WorkflowJob,
 )
+
 
 class DependencyGraph(object):
     PROJECT_UPDATES = 'project_updates'
@@ -75,7 +74,7 @@ class DependencyGraph(object):
         project_block = self.get_item(self.PROJECT_UPDATES, job.project_id)
         inventory_block = self.get_item(self.INVENTORY_UPDATES, job.inventory_id)
         if job.allow_simultaneous is False:
-                job_block = self.get_item(self.JOB_TEMPLATE_JOBS, job.job_template_id)
+            job_block = self.get_item(self.JOB_TEMPLATE_JOBS, job.job_template_id)
         else:
             job_block = None
         return project_block or inventory_block or job_block
