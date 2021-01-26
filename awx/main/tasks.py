@@ -101,7 +101,6 @@ Try upgrading OpenSSH or providing your private key in an different format. \
 '''
 
 logger = logging.getLogger('awx.main.tasks')
-logger_job_lifecycle = logging.getLogger('job_lifecycle')
 
 class InvalidVirtualenvError(Exception):
 
@@ -1186,19 +1185,19 @@ class BaseTask(object):
         '''
         Hook for any steps to run before the job/task starts
         '''
-        logger_job_lifecycle.info(f"{instance._meta.model_name}-{instance.id} pre run", extra={'type': instance._meta.model_name, 'template_name': instance.unified_job_template.name, 'job_id': instance.id, 'state': 'pre_run'})
+        instance.log_lifecycle(f"{instance._meta.model_name}-{instance.id} pre run", extra={'type': instance._meta.model_name, 'template_name': instance.unified_job_template.name, 'job_id': instance.id, 'state': 'pre_run'})
 
     def post_run_hook(self, instance, status):
         '''
         Hook for any steps to run before job/task is marked as complete.
         '''
-        logger_job_lifecycle.info(f"{instance._meta.model_name}-{instance.id} post run", extra={'type': instance._meta.model_name, 'template_name': instance.unified_job_template.name, 'job_id': instance.id, 'state': 'post_run'})
+        instance.log_lifecycle(f"{instance._meta.model_name}-{instance.id} post run", extra={'type': instance._meta.model_name, 'template_name': instance.unified_job_template.name, 'job_id': instance.id, 'state': 'post_run'})
 
     def final_run_hook(self, instance, status, private_data_dir, fact_modification_times, isolated_manager_instance=None):
         '''
         Hook for any steps to run after job/task is marked as complete.
         '''
-        logger_job_lifecycle.info(f"{instance._meta.model_name}-{instance.id} finalize run", extra={'type': instance._meta.model_name, 'template_name': instance.unified_job_template.name, 'job_id': instance.id, 'state': 'finalize_run'})
+        instance.log_lifecycle(f"{instance._meta.model_name}-{instance.id} finalize run", extra={'type': instance._meta.model_name, 'template_name': instance.unified_job_template.name, 'job_id': instance.id, 'state': 'finalize_run'})
         job_profiling_dir = os.path.join(private_data_dir, 'artifacts/playbook_profiling')
         awx_profiling_dir = '/var/log/tower/playbook_profiling/'
         if not os.path.exists(awx_profiling_dir):
@@ -1385,7 +1384,7 @@ class BaseTask(object):
             self.instance.send_notification_templates("running")
             private_data_dir = self.build_private_data_dir(self.instance)
             self.pre_run_hook(self.instance, private_data_dir)
-            logger_job_lifecycle.info(f"{self.instance._meta.model_name}-{self.instance.id} running", extra={'type': self.instance._meta.model_name, 'template_name': self.instance.unified_job_template.name, 'job_id': self.instance.id, 'state': 'running'})
+            self.instance.log_lifecycle(f"{self.instance._meta.model_name}-{self.instance.id} running", extra={'type': self.instance._meta.model_name, 'template_name': self.instance.unified_job_template.name, 'job_id': self.instance.id, 'state': 'running'})
             if self.instance.cancel_flag:
                 self.instance = self.update_model(self.instance.pk, status='canceled')
             if self.instance.status != 'running':

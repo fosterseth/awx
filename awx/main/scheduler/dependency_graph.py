@@ -24,13 +24,22 @@ class DependencyGraph(object):
     def __init__(self):
         self.data = {}
         self.data[self.PROJECT_UPDATES] = {}
+        # The reason for tracking both inventory and inventory sources:
+        # Consider InvA, which has two sources, InvSource1, InvSource2.
+        # JobB might depend on InvA, which launches two updates, one for each source.
+        # To determine if JobB can run, we can just check InvA, which is  marked in
+        # INVENTORY_UPDATES, instead of having to check for both entries in
+        # INVENTORY_SOURCE_UPDATES.
         self.data[self.INVENTORY_UPDATES] = {}
-        self.data[self.JOB_TEMPLATE_JOBS] = {}
         self.data[self.INVENTORY_SOURCE_UPDATES] = {}
+        self.data[self.JOB_TEMPLATE_JOBS] = {}
         self.data[self.SYSTEM_JOB] = (True, None)
         self.data[self.WORKFLOW_JOB_TEMPLATES_JOBS] = {}
 
     def mark_if_no_key(self, job_type, id, job):
+        # only mark first occurrence of a task. If 10 of JobA are launched
+        # (concurrent disabled), the dependency graph should return that jobs
+        # 2 through 10 are blocked by job1
         if id not in self.data[job_type]:
             self.data[job_type][id] = job
 

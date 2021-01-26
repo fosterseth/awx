@@ -42,7 +42,6 @@ from awx.main.utils import decrypt_field
 
 
 logger = logging.getLogger('awx.main.scheduler')
-logger_job_lifecycle = logging.getLogger('job_lifecycle')
 
 
 class TaskManager():
@@ -316,7 +315,7 @@ class TaskManager():
             with disable_activity_stream():
                 task.celery_task_id = str(uuid.uuid4())
                 task.save()
-                logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} waiting", extra={'type': task._meta.model_name, 'template_name': task.unified_job_template.name, 'job_id': task.id, 'state': 'waiting'})
+                task.log_lifecycle(f"{task._meta.model_name}-{task.id} waiting", extra={'type': task._meta.model_name, 'template_name': task.unified_job_template.name, 'job_id': task.id, 'state': 'waiting'})
 
             if rampart_group is not None:
                 self.consume_capacity(task, rampart_group.name)
@@ -455,7 +454,7 @@ class TaskManager():
     def generate_dependencies(self, undeped_tasks):
         created_dependencies = []
         for task in undeped_tasks:
-            logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} acknowledged", extra={'type': task._meta.model_name, 'template_name': task.unified_job_template.name, 'job_id': task.id, 'state': 'acknowledged'})
+            task.log_lifecycle(f"{task._meta.model_name}-{task.id} acknowledged", extra={'type': task._meta.model_name, 'template_name': task.unified_job_template.name, 'job_id': task.id, 'state': 'acknowledged'})
             dependencies = []
             if not type(task) is Job:
                 continue
@@ -501,9 +500,9 @@ class TaskManager():
             blocked_by = self.job_blocked_by(task)
             if blocked_by:
                 logger.debug("{} is blocked from running".format(task.log_format))
-                logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} blocked by {blocked_by._meta.model_name}-{blocked_by.id}", extra={'type': task._meta.model_name, 'template_name': task.unified_job_template.name, 'job_id': task.id, 'state': 'blocked', 'blocked_by': f"{blocked_by._meta.model_name}-{blocked_by.id}"})
-                job_explanation = str.format(f"waiting for {blocked_by._meta.model_name}-{blocked_by.id} to finish")
-                if task.job_explanation != job_explanation and task.created < (tz_now() - timedelta(seconds=30)):
+                task.log_lifecycle(f"{task._meta.model_name}-{task.id} blocked by {blocked_by._meta.model_name}-{blocked_by.id}", extra={'type': task._meta.model_name, 'template_name': task.unified_job_template.name, 'job_id': task.id, 'state': 'blocked', 'blocked_by': f"{blocked_by._meta.model_name}-{blocked_by.id}"})
+                job_explanation = _(f"waiting for {blocked_by._meta.model_name}-{blocked_by.id} to finish")
+                if task.job_explanation != job_explanation and task.created < (tz_now() - timedelta(seconds=0)):
                     task.job_explanation  = job_explanation
                     task.save(update_fields=["job_explanation"])
                 continue
@@ -527,7 +526,7 @@ class TaskManager():
 
                 remaining_capacity = self.get_remaining_capacity(rampart_group.name)
                 if not rampart_group.is_containerized and self.get_remaining_capacity(rampart_group.name) <= 0:
-                    logger_job_lifecycle.info(f"{task._meta.model_name}-{task.id} needs capacity", extra={'type': task._meta.model_name, 'template_name': task.unified_job_template.name, 'job_id': task.id, 'state': 'needs_capacity'})
+                    task.log_lifecycle(f"{task._meta.model_name}-{task.id} needs capacity", extra={'type': task._meta.model_name, 'template_name': task.unified_job_template.name, 'job_id': task.id, 'state': 'needs_capacity'})
                     logger.debug("Skipping group {}, remaining_capacity {} <= 0".format(
                                  rampart_group.name, remaining_capacity))
                     continue
@@ -552,9 +551,9 @@ class TaskManager():
                     logger.debug("No instance available in group {} to run job {} w/ capacity requirement {}".format(
                                  rampart_group.name, task.log_format, task.task_impact))
             if not found_acceptable_queue:
-                job_explanation = "This job is not ready to start because there is not enough available capacity."
-                if task.job_explanation != job_explanation and task.created < (tz_now() - timedelta(seconds=30)):
-                    task.job_explanation = "This job is not ready to start because there is not enough available capacity."
+                job_explanation = _("This job is not ready to start because there is not enough available capacity.")
+                if task.job_explanation != job_explanation and task.created < (tz_now() - timedelta(seconds=0)):
+                    task.job_explanation = job_explanation
                     task.save(update_fields["job_explanation"])
                 logger.debug("{} couldn't be scheduled on graph, waiting for next cycle".format(task.log_format))
 
