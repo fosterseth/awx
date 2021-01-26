@@ -69,7 +69,7 @@ class DependencyGraph(object):
         return self.get_item(self.PROJECT_UPDATES, job.project_id)
 
     def inventory_update_blocked_by(self, job):
-        return self.get_item(self.INVENTORY_SOURCE_UPDATE, job.inventory_source_id)
+        return self.get_item(self.INVENTORY_SOURCE_UPDATES, job.inventory_source_id)
 
     def job_blocked_by(self, job):
         project_block = self.get_item(self.PROJECT_UPDATES, job.project_id)
