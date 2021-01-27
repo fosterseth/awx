@@ -267,7 +267,7 @@ def test_openstack_client_config_generation_with_project_region_name(mocker, sou
 
     inventory_update = mocker.Mock(**{
         'source': 'openstack',
-        'source_vars_dict': {}, 
+        'source_vars_dict': {},
         'get_cloud_credential': mocker.Mock(return_value=credential),
         'get_extra_credentials': lambda x: [],
         'ansible_virtualenv_path': '/venv/foo'
@@ -475,7 +475,7 @@ class TestGenericRun():
             status='running', inventory=Inventory(),
             project=Project(local_path='/projects/_23_foo'))
         job.websocket_emit_status = mock.Mock()
-
+        import pdb; pdb.set_trace()
         task = tasks.RunJob()
         task.update_model = mock.Mock(return_value=job)
         task.model.objects.get = mock.Mock(return_value=job)

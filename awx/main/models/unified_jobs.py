@@ -642,6 +642,13 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
         editable=False,
         help_text=_("If True, the task manager has already processed potential dependencies for this job.")
     )
+    waiting_on = models.ForeignKey(
+        'self',
+        null=True,
+        editable=False,
+        related_name='+',
+        on_delete=polymorphic.SET_NULL,
+    )
     finished = models.DateTimeField(
         null=True,
         default=None,
@@ -1326,6 +1333,7 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
         # remove any job_explanations that may have been set while job was in pending
         if self.job_explanation != "":
             self.job_explanation = ""
+            self.waiting_on = None
 
         return (True, opts)
 
@@ -1495,4 +1503,4 @@ class UnifiedJob(PolymorphicModel, PasswordFieldsModel, CommonModelNameNotUnique
         return False
 
     def log_lifecycle(self, message, **extra):
-        logger_job_lifecycle.debug(message, **extra)
+        logger_job_lifecycle.info(message, **extra)

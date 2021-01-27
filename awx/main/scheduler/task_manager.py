@@ -514,9 +514,10 @@ class TaskManager():
                                           'task_id': task.id, 'state': 'blocked',
                                           'blocked_by': f"{blocked_by._meta.model_name}-{blocked_by.id}"})
                 job_explanation = _(f"waiting for {blocked_by._meta.model_name}-{blocked_by.id} to finish")
-                if task.job_explanation != job_explanation and task.created < (tz_now() - timedelta(seconds=30)):
+                if task.job_explanation != job_explanation and task.created < (tz_now() - timedelta(seconds=0)):
                     task.job_explanation  = job_explanation
-                    task.save(update_fields=["job_explanation"])
+                    task.waiting_on = blocked_by
+                    task.save(update_fields=["job_explanation", "waiting_on"])
                 continue
             preferred_instance_groups = task.preferred_instance_groups
             found_acceptable_queue = False
@@ -538,11 +539,6 @@ class TaskManager():
 
                 remaining_capacity = self.get_remaining_capacity(rampart_group.name)
                 if not rampart_group.is_containerized and self.get_remaining_capacity(rampart_group.name) <= 0:
-                    task.log_lifecycle(f"{task._meta.model_name}-{task.id} needs capacity",
-                                       extra={'type': task._meta.model_name,
-                                              'template_name': task.unified_job_template.name,
-                                              'task_id': task.id,
-                                              'state': 'needs_capacity'})
                     logger.debug("Skipping group {}, remaining_capacity {} <= 0".format(
                                  rampart_group.name, remaining_capacity))
                     continue
@@ -567,8 +563,13 @@ class TaskManager():
                     logger.debug("No instance available in group {} to run job {} w/ capacity requirement {}".format(
                                  rampart_group.name, task.log_format, task.task_impact))
             if not found_acceptable_queue:
+                task.log_lifecycle(f"{task._meta.model_name}-{task.id} needs capacity",
+                                   extra={'type': task._meta.model_name,
+                                          'template_name': task.unified_job_template.name,
+                                          'task_id': task.id,
+                                          'state': 'needs_capacity'})
                 job_explanation = _("This job is not ready to start because there is not enough available capacity.")
-                if task.job_explanation != job_explanation and task.created < (tz_now() - timedelta(seconds=30)):
+                if task.job_explanation != job_explanation and task.created < (tz_now() - timedelta(seconds=0)):
                     task.job_explanation = job_explanation
                     task.save(update_fields=["job_explanation"])
                 logger.debug("{} couldn't be scheduled on graph, waiting for next cycle".format(task.log_format))
