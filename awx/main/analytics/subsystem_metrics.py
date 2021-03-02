@@ -6,14 +6,9 @@ import logging
 from django.conf import settings
 from django.apps import apps
 from awx.main.consumers import emit_channel_notification
-from prometheus_client import (
-    CollectorRegistry,
-    Gauge,
-    generate_latest
-)
 
 root_key = 'awx_metrics'
-send_metrics_interval = 3 # seconds
+send_metrics_interval = 3 # minimum time that must elapse between sending metrics
 logger = logging.getLogger('awx.main.wsbroadcast')
 
 
@@ -26,12 +21,14 @@ class BaseM():
         value = conn.hget(root_key, self.field)
         return self.decode_value(value)
 
-    def decode_to_str(self, conn):
-        value = self.decode(conn)
-        return self.value_to_str(value)
-
     def set(self, value, conn):
         conn.hset(root_key, self.field, value)
+
+    def to_prometheus(self, instance_data):
+        output_text = f"# HELP {self.field} {self.help_text}\n# TYPE {self.field} histogram\n"
+        for instance in instance_data:
+            output_text += f'{self.field}{{node="{instance}"}} {instance_data[instance][self.field]}\n'
+        return output_text
 
 
 class FloatM(BaseM):
@@ -44,10 +41,6 @@ class FloatM(BaseM):
         else:
             return 0.0
 
-    def value_to_str(self, value):
-        return f'{value:.2f}'
-
-
 class IntM(BaseM):
     def inc(self, value, conn):
         conn.hincrby(root_key, self.field, value)
@@ -58,9 +51,43 @@ class IntM(BaseM):
         else:
             return 0
 
-    def value_to_str(self, value):
-        return str(value)
 
+class HistogramM(BaseM):
+    def __init__(self, field, help_text, buckets):
+        self.buckets = buckets
+        self.buckets_to_keys = {}
+        for b in buckets:
+            self.buckets_to_keys[b] = IntM(field + '_' + str(b), '')
+        self.inf = IntM(field + '_inf', '')
+        self.sum = IntM(field + '_sum', '')
+        super(HistogramM, self).__init__(field, help_text)
+
+    def observe(self, value, conn):
+        for b in self.buckets:
+            if value <= b:
+                self.buckets_to_keys[b].inc(1, conn)
+                break
+        self.sum.inc(value, conn)
+        self.inf.inc(1, conn)
+
+
+    def decode(self, conn):
+        values = {'counts':[]}
+        for b in self.buckets_to_keys:
+            values['counts'].append(self.buckets_to_keys[b].decode(conn))
+        values['sum'] = self.sum.decode(conn)
+        values['inf'] = self.inf.decode(conn)
+        return values
+
+    def to_prometheus(self, instance_data):
+        output_text = f"# HELP {self.field} {self.help_text}\n# TYPE {self.field} histogram\n"
+        for instance in instance_data:
+            for i, b in enumerate(self.buckets):
+                output_text += f'{self.field}_bucket{{le="{b}",node="{instance}"}} {sum(instance_data[instance][self.field]["counts"][0:i+1])}\n'
+            output_text += f'{self.field}_bucket{{le="+Inf",node="{instance}"}} {instance_data[instance][self.field]["inf"]}\n'
+            output_text += f'{self.field}_count{{node="{instance}"}} {instance_data[instance][self.field]["inf"]}\n'
+            output_text += f'{self.field}_sum{{node="{instance}"}} {instance_data[instance][self.field]["sum"]}\n'
+        return output_text
 
 class Metrics():
     def __init__(self, conn = None):
@@ -94,6 +121,12 @@ class Metrics():
         METRICS[field].set(value, conn)
         self.send_metrics()
 
+    def observe(self, field, value, conn = None):
+        if conn is None:
+            conn = self.conn
+        METRICS[field].observe(value, conn)
+        self.send_metrics()
+
     def serialize_local_metrics(self):
         data = self.load_local_metrics()
         return json.dumps(data)
@@ -102,13 +135,13 @@ class Metrics():
         # generate python dictionary of key values from metrics stored in redis
         data = {}
         for field in METRICS:
-            data[field] = METRICS[field].decode_to_str(self.conn)
+            data[field] = METRICS[field].decode(self.conn)
         return data
 
     def store_metrics(self, data_json):
         # called when receiving metrics from other instances
         data = json.loads(data_json)
-        logger.debug(f"instance {self.instance_name} received subsystem metrics from instance {data['instance']}")
+        logger.debug(f"{self.instance_name} received subsystem metrics from {data['instance']}")
         self.conn.set(root_key + "_instance_" + data['instance'], data['metrics'])
 
     def send_metrics(self):
@@ -132,6 +165,7 @@ class Metrics():
                     'instance': self.instance_name,
                     'metrics': self.serialize_local_metrics(),
                 }
+                logger.debug(f"{self.instance_name} sending metrics")
                 emit_channel_notification("metrics", payload)
                 self.conn.set(root_key + '_last_broadcast', time.time())
         finally:
@@ -165,15 +199,12 @@ class Metrics():
 
     def generate_metrics(self, request):
         # takes the api request, filters, and generates prometheus data
-        REGISTRY = CollectorRegistry()
         instance_data = self.load_other_metrics(request)
+        output_text = ''
         if instance_data:
             for field in METRICS:
-                help_text = METRICS[field].help_text
-                prometheus_object = Gauge(field, help_text, ['node'], registry=REGISTRY)
-                for instance in instance_data:
-                    prometheus_object.labels(node=instance).set(instance_data[instance][field])
-        return generate_latest(registry=REGISTRY)
+                output_text += METRICS[field].to_prometheus(instance_data)
+        return output_text
 
 
 def metrics(request):
@@ -191,14 +222,13 @@ METRICSLIST = [
          'Current number of events in memory (in transfer from redis to db)'),
     IntM('callback_receiver_batch_events_errors',
          'Number of times batch insertion failed'),
-    IntM('callback_receiver_events_size',
-         'Size of events saved to db'),
     FloatM('callback_receiver_events_insert_db_seconds',
            'Time spent saving events to database'),
     IntM('callback_receiver_events_insert_db',
          'Number of events batch inserted into database'),
-    IntM('callback_receiver_batch_events_insert_db',
-         'Number of events batch inserted into database'),
+    HistogramM('callback_receiver_batch_events_insert_db',
+         'Number of events batch inserted into database',
+         [50, 250, 500, 750, 1000]),
     IntM('callback_receiver_events_insert_redis',
          'Number of events inserted into redis'),
 ]

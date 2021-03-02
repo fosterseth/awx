@@ -117,7 +117,6 @@ class CallbackBrokerWorker(BaseWorker):
         ):
             bulk_events_saved = 0
             singular_events_saved = 0
-            stdout_size_saved = 0
             metrics_events_batch_save_errors = 0
             for cls, events in self.buff.items():
                 logger.debug(f'{cls.__name__}.objects.bulk_create({len(events)})')
@@ -129,7 +128,6 @@ class CallbackBrokerWorker(BaseWorker):
                 try:
                     cls.objects.bulk_create(events)
                     bulk_events_saved += len(events)
-                    stdout_size_saved += sum([len(i.event_data) for i in events])
                 except Exception:
                     # if an exception occurs, we should re-attempt to save the
                     # events one-by-one, because something in the list is
@@ -139,7 +137,6 @@ class CallbackBrokerWorker(BaseWorker):
                         try:
                             e.save()
                             singular_events_saved += 1
-                            stdout_size_saved += len(e.event_data)
                         except Exception:
                             logger.exception('Database Error Saving Job Event')
                 duration_to_save = tz_now() - duration_to_save
@@ -152,10 +149,9 @@ class CallbackBrokerWorker(BaseWorker):
                 if (bulk_events_saved + singular_events_saved) > 0:
                     with self.redis.pipeline() as pipe:
                         self.subsystem_metrics.inc('callback_receiver_batch_events_errors', metrics_events_batch_save_errors, conn=pipe)
-                        self.subsystem_metrics.inc('callback_receiver_events_size', stdout_size_saved, conn=pipe)
                         self.subsystem_metrics.inc('callback_receiver_events_insert_db_seconds', duration_to_save.total_seconds(), conn=pipe)
                         self.subsystem_metrics.inc('callback_receiver_events_insert_db', bulk_events_saved + singular_events_saved, conn=pipe)
-                        self.subsystem_metrics.inc('callback_receiver_batch_events_insert_db', bulk_events_saved, conn=pipe)
+                        self.subsystem_metrics.observe('callback_receiver_batch_events_insert_db', bulk_events_saved, conn=pipe)
                         self.subsystem_metrics.inc('callback_receiver_events_in_memory', -(bulk_events_saved + singular_events_saved), conn=pipe)
                         pipe.execute()
             except Exception:

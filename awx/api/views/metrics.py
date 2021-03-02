@@ -42,6 +42,6 @@ class MetricsView(APIView):
             if not request.query_params.get('subsystemonly', "0") == "1":
                 metrics_to_show += metrics().decode('UTF-8')
             if not request.query_params.get('dbonly', "0") == "1":
-                metrics_to_show += s_metrics.metrics(request).decode('UTF-8')
+                metrics_to_show += s_metrics.metrics(request)
             return Response(metrics_to_show)
         raise PermissionDenied()

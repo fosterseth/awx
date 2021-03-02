@@ -64,6 +64,7 @@ class WebsocketTask():
         self.protocol = protocol
         self.verify_ssl = verify_ssl
         self.channel_layer = None
+        self.subsystem_metrics = s_metrics.Metrics()
 
     async def run_loop(self, websocket: aiohttp.ClientWebSocketResponse):
         raise RuntimeError("Implement me")
@@ -142,7 +143,8 @@ class BroadcastWebsocketTask(WebsocketTask):
                     continue
                 (group, message) = unwrap_broadcast_msg(payload)
                 if group == "metrics":
-                    s_metrics.Metrics().store_metrics(message)
+                    self.subsystem_metrics.store_metrics(message)
+                    continue
                 await self.channel_layer.group_send(group, {"type": "internal.message", "text": message})
 
 
