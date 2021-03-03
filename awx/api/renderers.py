@@ -137,9 +137,18 @@ class PrometheusJSONRenderer(renderers.JSONRenderer):
         for family in parsed_metrics:
             data[family.name] = {}
             data[family.name]['help_text'] = family.documentation
+            data[family.name]['type'] = family.type
             data[family.name]['samples'] = []
             for sample in family.samples:
-                data[family.name]['samples'].append({"labels": sample[1], "value": sample[2]})
+                sample_dict = {"labels": sample[1], "value": sample[2]}
+                if family.type == 'histogram':
+                    if sample[0].endswith("_sum"):
+                        sample_dict['sample_type'] = "sum"
+                    elif sample[0].endswith("_count"):
+                        sample_dict['sample_type'] = "count"
+                    elif sample[0].endswith("_bucket"):
+                        sample_dict['sample_type'] = "bucket"
+                data[family.name]['samples'].append(sample_dict)
         return super(PrometheusJSONRenderer, self).render(
             data, accepted_media_type, renderer_context
         )

@@ -25,7 +25,7 @@ class BaseM():
         conn.hset(root_key, self.field, value)
 
     def to_prometheus(self, instance_data):
-        output_text = f"# HELP {self.field} {self.help_text}\n# TYPE {self.field} histogram\n"
+        output_text = f"# HELP {self.field} {self.help_text}\n# TYPE {self.field} gauge\n"
         for instance in instance_data:
             output_text += f'{self.field}{{node="{instance}"}} {instance_data[instance][self.field]}\n'
         return output_text
@@ -40,6 +40,7 @@ class FloatM(BaseM):
             return float(value)
         else:
             return 0.0
+
 
 class IntM(BaseM):
     def inc(self, value, conn):
@@ -88,6 +89,7 @@ class HistogramM(BaseM):
             output_text += f'{self.field}_count{{node="{instance}"}} {instance_data[instance][self.field]["inf"]}\n'
             output_text += f'{self.field}_sum{{node="{instance}"}} {instance_data[instance][self.field]["sum"]}\n'
         return output_text
+
 
 class Metrics():
     def __init__(self, conn = None):
@@ -176,20 +178,17 @@ class Metrics():
         # e.g., awx_metrics_instance_awx-1, awx_metrics_instance_awx-2
         # this method looks for keys with "_instance_" in the name and loads the data
         # also filters data based on request query params
+        # if additional filtering is added, update metrics_view.md
         instances_filter = request.query_params.getlist("node")
-        use_all_instances = False
-        if len(instances_filter) == 0:
-            use_all_instances = True
         # get a sorted list of instance names
         instance_names = [self.instance_name]
         for m in self.conn.scan_iter(root_key + '_instance_*'):
             instance_names.append(m.decode('UTF-8').split('_instance_')[1])
         instance_names.sort()
-
         # load data, including data from the this local instance
         instance_data = {}
         for instance in instance_names:
-            if use_all_instances or instance in instances_filter:
+            if len(instances_filter) == 0 or instance in instances_filter:
                 if instance == self.instance_name:
                     instance_metrics = self.load_local_metrics()
                 else:
@@ -199,11 +198,14 @@ class Metrics():
 
     def generate_metrics(self, request):
         # takes the api request, filters, and generates prometheus data
+        # if additional filtering is added, update metrics_view.md
         instance_data = self.load_other_metrics(request)
+        metrics_filter = request.query_params.getlist("metric")
         output_text = ''
         if instance_data:
             for field in METRICS:
-                output_text += METRICS[field].to_prometheus(instance_data)
+                if len(metrics_filter) == 0 or field in metrics_filter:
+                    output_text += METRICS[field].to_prometheus(instance_data)
         return output_text
 
 
@@ -227,8 +229,8 @@ METRICSLIST = [
     IntM('callback_receiver_events_insert_db',
          'Number of events batch inserted into database'),
     HistogramM('callback_receiver_batch_events_insert_db',
-         'Number of events batch inserted into database',
-         [50, 250, 500, 750, 1000]),
+               'Number of events batch inserted into database',
+               [50, 250, 500, 750, 1000]),
     IntM('callback_receiver_events_insert_redis',
          'Number of events inserted into redis'),
 ]
