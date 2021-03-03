@@ -92,42 +92,29 @@ class HistogramM(BaseM):
 
 
 class Metrics():
-    def __init__(self, conn = None):
-        if conn is None:
-            self.conn = redis.Redis.from_url(settings.BROKER_URL)
-            self.conn.client_setname("subsystem_metrics")
-        else:
-            self.conn = conn
+    def __init__(self):
+        self.pipe = redis.Redis.from_url(settings.BROKER_URL).pipeline()
+        self.conn = redis.Redis.from_url(settings.BROKER_URL)
+        self.conn.client_setname(__name__)
 
         Instance = apps.get_model('main', 'Instance')
         instance_name = Instance.objects.me().hostname
         self.instance_name = instance_name
 
-    def inc(self, field, value, conn = None):
+    def inc(self, field, value):
         if value != 0:
-            if conn is None:
-                conn = self.conn
-            METRICS[field].inc(value, conn)
-            self.send_metrics()
+            METRICS[field].inc(value, self.pipe)
+            self.pipe_execute()
+            # logger.debug(f"updating {field}")
+    def set(self, field, value):
+        METRICS[field].set(value, self.pipe)
+        # logger.debug(f"updating {field}")
+        self.pipe_execute()
 
-    def set(self, field, value, conn = None):
-        # conn here could be a pipeline(), so we must get a new conn to do the
-        # previous value lookup. Otherwise the hget() won't execute until
-        # pipeline().execute is called in the calling function.
-        with self.conn as inner_conn:
-            previous_value = METRICS[field].decode(inner_conn)
-            if previous_value is not None and previous_value == value:
-                return
-        if conn is None:
-            conn = self.conn
-        METRICS[field].set(value, conn)
-        self.send_metrics()
-
-    def observe(self, field, value, conn = None):
-        if conn is None:
-            conn = self.conn
-        METRICS[field].observe(value, conn)
-        self.send_metrics()
+    def observe(self, field, value):
+        METRICS[field].observe(value, self.pipe)
+        # logger.debug(f"updating {field}")
+        self.pipe_execute()
 
     def serialize_local_metrics(self):
         data = self.load_local_metrics()
@@ -146,32 +133,20 @@ class Metrics():
         logger.debug(f"{self.instance_name} received subsystem metrics from {data['instance']}")
         self.conn.set(root_key + "_instance_" + data['instance'], data['metrics'])
 
+    def pipe_execute(self):
+        command_stack = len(self.pipe.command_stack)
+        if command_stack > 100:
+            # logger.debug(f"pipeline command stack {command_stack}")
+            self.pipe.execute()
+
     def send_metrics(self):
-        # more than one thread could be calling this at the same time, so should
-        # get acquire redis lock before sending metrics
-        lock = self.conn.lock(root_key + '_lock', thread_local = False)
-        if not lock.acquire(blocking=False):
-            return
-        try:
-            should_broadcast = False
-            metrics_last_sent = 0.0
-            if not self.conn.exists(root_key + '_last_broadcast'):
-                should_broadcast = True
-            else:
-                last_broadcast = float(self.conn.get(root_key + '_last_broadcast'))
-                metrics_last_sent = time.time() - last_broadcast
-                if metrics_last_sent > send_metrics_interval:
-                    should_broadcast = True
-            if should_broadcast:
-                payload = {
-                    'instance': self.instance_name,
-                    'metrics': self.serialize_local_metrics(),
-                }
-                logger.debug(f"{self.instance_name} sending metrics")
-                emit_channel_notification("metrics", payload)
-                self.conn.set(root_key + '_last_broadcast', time.time())
-        finally:
-            lock.release()
+        payload = {
+            'instance': self.instance_name,
+            'metrics': self.serialize_local_metrics(),
+        }
+        logger.debug(f"{self.instance_name} sending metrics")
+        emit_channel_notification("metrics", payload)
+
 
     def load_other_metrics(self, request):
         # data received from other nodes are stored in their own keys

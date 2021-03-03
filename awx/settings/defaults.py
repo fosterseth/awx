@@ -469,7 +469,7 @@ CELERYBEAT_SCHEDULE = {
     },
     'send_subsystem_metrics': {
         'task': 'awx.main.analytics.tasks.send_subsystem_metrics',
-        'schedule': timedelta(seconds=20),
+        'schedule': timedelta(seconds=5),
     },
     # 'isolated_heartbeat': set up at the end of production.py and development.py
 }

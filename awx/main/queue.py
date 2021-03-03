@@ -30,7 +30,7 @@ class CallbackQueueDispatcher(object):
         self.queue = getattr(settings, 'CALLBACK_QUEUE', '')
         self.logger = logging.getLogger('awx.main.queue.CallbackQueueDispatcher')
         self.connection = redis.Redis.from_url(settings.BROKER_URL)
-        self.subsystem_metrics = s_metrics.Metrics(conn=self.connection)
+        self.subsystem_metrics = s_metrics.Metrics()
         self.connection.client_setname("callbackqueuedispatcher")
 
     def dispatch(self, obj):
