@@ -49,6 +49,7 @@ class CallbackBrokerWorker(BaseWorker):
         self.pid = os.getpid()
         self.redis = redis.Redis.from_url(settings.BROKER_URL)
         self.subsystem_metrics = s_metrics.Metrics()
+        self.queue_has_items = False
         self.prof = AWXProfiler("CallbackBrokerWorker")
         for key in self.redis.keys('awx_callback_receiver_statistics_*'):
             self.redis.delete(key)
@@ -56,8 +57,14 @@ class CallbackBrokerWorker(BaseWorker):
     def read(self, queue):
         try:
             res = self.redis.blpop(settings.CALLBACK_QUEUE, timeout=1)
+            if self.queue_has_items:
+                self.subsystem_metrics.set('callback_receiver_events_queue_size_redis', self.redis.llen(settings.CALLBACK_QUEUE))
             if res is None:
+                self.queue_has_items = False
                 return {'event': 'FLUSH'}
+            self.queue_has_items = True
+            self.subsystem_metrics.inc('callback_receiver_events_popped_redis', 1)
+            self.subsystem_metrics.inc('callback_receiver_events_in_memory', 1)
             self.total += 1
             return json.loads(res[1])
         except redis.exceptions.RedisError:
@@ -67,10 +74,6 @@ class CallbackBrokerWorker(BaseWorker):
             logger.exception("failed to decode JSON message from redis")
         finally:
             self.record_statistics()
-            self.subsystem_metrics.inc('callback_receiver_events_popped_redis', 1)
-            self.subsystem_metrics.inc('callback_receiver_events_in_memory', 1)
-            callback_queue_size = self.redis.llen(settings.CALLBACK_QUEUE)
-            self.subsystem_metrics.set('callback_receiver_events_queue_size_redis', callback_queue_size)
 
         return {'event': 'FLUSH'}
 
