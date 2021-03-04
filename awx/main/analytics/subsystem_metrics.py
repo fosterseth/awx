@@ -16,13 +16,17 @@ class BaseM():
     def __init__(self, field, help_text):
         self.field = field
         self.help_text = help_text
+        self.current_value = 0
+
+    def inc(self, value):
+        self.current_value += value
+
+    def set(self, value):
+        self.current_value = value
 
     def decode(self, conn):
         value = conn.hget(root_key, self.field)
         return self.decode_value(value)
-
-    def set(self, value, conn):
-        conn.hset(root_key, self.field, value)
 
     def to_prometheus(self, instance_data):
         output_text = f"# HELP {self.field} {self.help_text}\n# TYPE {self.field} gauge\n"
@@ -32,25 +36,39 @@ class BaseM():
 
 
 class FloatM(BaseM):
-    def inc(self, value, conn):
-        conn.hincrbyfloat(root_key, self.field, value)
-
     def decode_value(self, value):
         if value is not None:
             return float(value)
         else:
             return 0.0
 
+    def store_value(self, conn):
+        conn.hincrbyfloat(root_key, self.field, self.current_value)
+        self.current_value = 0
+
 
 class IntM(BaseM):
-    def inc(self, value, conn):
-        conn.hincrby(root_key, self.field, value)
-
     def decode_value(self, value):
         if value is not None:
             return int(value)
         else:
             return 0
+
+    def store_value(self, conn):
+        conn.hincrby(root_key, self.field, self.current_value)
+        self.current_value = 0
+
+
+class SetM(BaseM):
+    def decode_value(self, value):
+        if value is not None:
+            return int(value)
+        else:
+            return 0
+
+    def store_value(self, conn):
+        conn.hset(root_key, self.field, self.current_value)
+        self.current_value = 0
 
 
 class HistogramM(BaseM):
@@ -63,14 +81,13 @@ class HistogramM(BaseM):
         self.sum = IntM(field + '_sum', '')
         super(HistogramM, self).__init__(field, help_text)
 
-    def observe(self, value, conn):
+    def observe(self, value):
         for b in self.buckets:
             if value <= b:
-                self.buckets_to_keys[b].inc(1, conn)
+                self.buckets_to_keys[b].inc(1)
                 break
-        self.sum.inc(value, conn)
-        self.inf.inc(1, conn)
-
+        self.sum.inc(value)
+        self.inf.inc(1)
 
     def decode(self, conn):
         values = {'counts':[]}
@@ -79,6 +96,12 @@ class HistogramM(BaseM):
         values['sum'] = self.sum.decode(conn)
         values['inf'] = self.inf.decode(conn)
         return values
+
+    def store_value(self, conn):
+        for b in self.buckets:
+            self.buckets_to_keys[b].store_value(conn)
+        self.sum.store_value(conn)
+        self.inf.store_value(conn)
 
     def to_prometheus(self, instance_data):
         output_text = f"# HELP {self.field} {self.help_text}\n# TYPE {self.field} histogram\n"
@@ -96,23 +119,49 @@ class Metrics():
         self.pipe = redis.Redis.from_url(settings.BROKER_URL).pipeline()
         self.conn = redis.Redis.from_url(settings.BROKER_URL)
         self.conn.client_setname(__name__)
-
+        self.last_pipe_execute= time.time()
         Instance = apps.get_model('main', 'Instance')
         instance_name = Instance.objects.me().hostname
         self.instance_name = instance_name
 
+        # metric name, help_text
+        METRICSLIST = [
+            SetM('callback_receiver_events_queue_size_redis',
+                 'Current number of events in redis queue'),
+            IntM('callback_receiver_events_popped_redis',
+                 'Number of events popped from redis'),
+            IntM('callback_receiver_events_in_memory',
+                 'Current number of events in memory (in transfer from redis to db)'),
+            IntM('callback_receiver_batch_events_errors',
+                 'Number of times batch insertion failed'),
+            FloatM('callback_receiver_events_insert_db_seconds',
+                   'Time spent saving events to database'),
+            IntM('callback_receiver_events_insert_db',
+                 'Number of events batch inserted into database'),
+            HistogramM('callback_receiver_batch_events_insert_db',
+                       'Number of events batch inserted into database',
+                       [50, 250, 500, 750, 1000]),
+            IntM('callback_receiver_events_insert_redis',
+                 'Number of events inserted into redis'),
+        ]
+        # turn metric list into dictionary with the metric name as a key
+        self.METRICS = {}
+        for m in METRICSLIST:
+            self.METRICS[m.field] = m
+
     def inc(self, field, value):
         if value != 0:
-            METRICS[field].inc(value, self.pipe)
+            self.METRICS[field].inc(value)
             self.pipe_execute()
             # logger.debug(f"updating {field}")
+
     def set(self, field, value):
-        METRICS[field].set(value, self.pipe)
+        self.METRICS[field].set(value)
         # logger.debug(f"updating {field}")
         self.pipe_execute()
 
     def observe(self, field, value):
-        METRICS[field].observe(value, self.pipe)
+        self.METRICS[field].observe(value)
         # logger.debug(f"updating {field}")
         self.pipe_execute()
 
@@ -123,8 +172,8 @@ class Metrics():
     def load_local_metrics(self):
         # generate python dictionary of key values from metrics stored in redis
         data = {}
-        for field in METRICS:
-            data[field] = METRICS[field].decode(self.conn)
+        for field in self.METRICS:
+            data[field] = self.METRICS[field].decode(self.conn)
         return data
 
     def store_metrics(self, data_json):
@@ -133,11 +182,19 @@ class Metrics():
         logger.debug(f"{self.instance_name} received subsystem metrics from {data['instance']}")
         self.conn.set(root_key + "_instance_" + data['instance'], data['metrics'])
 
+    def should_pipe_execute(self):
+        if float(time.time() - self.last_pipe_execute) > 2:
+            return True
+        else:
+            return False
+
     def pipe_execute(self):
-        command_stack = len(self.pipe.command_stack)
-        if command_stack > 100:
-            # logger.debug(f"pipeline command stack {command_stack}")
+        if self.should_pipe_execute() == True:
+            logger.debug(f"{self.instance_name} pipeline execute")
+            for m in self.METRICS:
+                self.METRICS[m].store_value(self.pipe)
             self.pipe.execute()
+            self.last_pipe_execute = time.time()
 
     def send_metrics(self):
         payload = {
@@ -178,38 +235,12 @@ class Metrics():
         metrics_filter = request.query_params.getlist("metric")
         output_text = ''
         if instance_data:
-            for field in METRICS:
+            for field in self.METRICS:
                 if len(metrics_filter) == 0 or field in metrics_filter:
-                    output_text += METRICS[field].to_prometheus(instance_data)
+                    output_text += self.METRICS[field].to_prometheus(instance_data)
         return output_text
 
 
 def metrics(request):
     m = Metrics()
     return m.generate_metrics(request)
-
-
-# metric name, help_text
-METRICSLIST = [
-    IntM('callback_receiver_events_queue_size_redis',
-         'Current number of events in redis queue'),
-    IntM('callback_receiver_events_popped_redis',
-         'Number of events popped from redis'),
-    IntM('callback_receiver_events_in_memory',
-         'Current number of events in memory (in transfer from redis to db)'),
-    IntM('callback_receiver_batch_events_errors',
-         'Number of times batch insertion failed'),
-    FloatM('callback_receiver_events_insert_db_seconds',
-           'Time spent saving events to database'),
-    IntM('callback_receiver_events_insert_db',
-         'Number of events batch inserted into database'),
-    HistogramM('callback_receiver_batch_events_insert_db',
-               'Number of events batch inserted into database',
-               [50, 250, 500, 750, 1000]),
-    IntM('callback_receiver_events_insert_redis',
-         'Number of events inserted into redis'),
-]
-# turn metric list into dictionary with the metric name as a key
-METRICS = {}
-for m in METRICSLIST:
-    METRICS[m.field] = m
