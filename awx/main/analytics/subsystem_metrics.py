@@ -190,9 +190,9 @@ class Metrics():
 
     def pipe_execute(self):
         if self.should_pipe_execute() == True:
-            logger.debug(f"{self.instance_name} pipeline execute")
             for m in self.METRICS:
                 self.METRICS[m].store_value(self.pipe)
+            logger.debug(f"{self.instance_name} pipeline execute {len(self.pipe.command_stack)} commands")
             self.pipe.execute()
             self.last_pipe_execute = time.time()
 
@@ -201,7 +201,6 @@ class Metrics():
             'instance': self.instance_name,
             'metrics': self.serialize_local_metrics(),
         }
-        logger.debug(f"{self.instance_name} sending metrics")
         emit_channel_notification("metrics", payload)
 
 
