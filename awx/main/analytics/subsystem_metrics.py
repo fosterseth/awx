@@ -194,7 +194,6 @@ class Metrics():
         if force_pipe_execute == True or self.should_pipe_execute() == True:
             for m in self.METRICS:
                 self.METRICS[m].store_value(self.pipe)
-            logger.debug(f"{self.instance_name} pipe execute {len(self.pipe.command_stack)}")
             self.pipe.execute()
             self.last_pipe_execute = time.time()
 
