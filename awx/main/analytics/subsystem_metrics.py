@@ -67,8 +67,10 @@ class SetM(BaseM):
             return 0
 
     def store_value(self, conn):
-        conn.hset(root_key, self.field, self.current_value)
-        self.current_value = 0
+        # do not set value if it has not changed since last time this was called
+        if not self.current_value == None:
+            conn.hset(root_key, self.field, self.current_value)
+            self.current_value = None
 
 
 class HistogramM(BaseM):
@@ -140,30 +142,30 @@ class Metrics():
                  'Number of events batch inserted into database'),
             HistogramM('callback_receiver_batch_events_insert_db',
                        'Number of events batch inserted into database',
-                       [50, 250, 500, 750, 1000]),
-            IntM('callback_receiver_events_insert_redis',
-                 'Number of events inserted into redis'),
+                       [10, 50, 150, 350, 650, 1000]),
+            # IntM('callback_receiver_events_insert_redis',
+            #      'Number of events inserted into redis'),
         ]
         # turn metric list into dictionary with the metric name as a key
         self.METRICS = {}
         for m in METRICSLIST:
             self.METRICS[m.field] = m
 
-    def inc(self, field, value):
+    def inc(self, field, value, force_pipe_execute = False):
         if value != 0:
             self.METRICS[field].inc(value)
-            self.pipe_execute()
+            self.pipe_execute(force_pipe_execute)
             # logger.debug(f"updating {field}")
 
-    def set(self, field, value):
+    def set(self, field, value, force_pipe_execute = False):
         self.METRICS[field].set(value)
         # logger.debug(f"updating {field}")
-        self.pipe_execute()
+        self.pipe_execute(force_pipe_execute)
 
-    def observe(self, field, value):
+    def observe(self, field, value, force_pipe_execute = False):
         self.METRICS[field].observe(value)
         # logger.debug(f"updating {field}")
-        self.pipe_execute()
+        self.pipe_execute(force_pipe_execute)
 
     def serialize_local_metrics(self):
         data = self.load_local_metrics()
@@ -183,16 +185,16 @@ class Metrics():
         self.conn.set(root_key + "_instance_" + data['instance'], data['metrics'])
 
     def should_pipe_execute(self):
-        if float(time.time() - self.last_pipe_execute) > 2:
+        if time.time() - self.last_pipe_execute > settings.SUBSYSTEM_METRICS_STORE_INTERVAL:
             return True
         else:
             return False
 
-    def pipe_execute(self):
-        if self.should_pipe_execute() == True:
+    def pipe_execute(self, force_pipe_execute = False):
+        if force_pipe_execute == True or self.should_pipe_execute() == True:
             for m in self.METRICS:
                 self.METRICS[m].store_value(self.pipe)
-            logger.debug(f"{self.instance_name} pipeline execute {len(self.pipe.command_stack)} commands")
+            logger.debug(f"{self.instance_name} pipe execute {len(self.pipe.command_stack)}")
             self.pipe.execute()
             self.last_pipe_execute = time.time()
 
@@ -202,7 +204,6 @@ class Metrics():
             'metrics': self.serialize_local_metrics(),
         }
         emit_channel_notification("metrics", payload)
-
 
     def load_other_metrics(self, request):
         # data received from other nodes are stored in their own keys

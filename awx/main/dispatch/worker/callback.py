@@ -50,21 +50,14 @@ class CallbackBrokerWorker(BaseWorker):
         self.redis = redis.Redis.from_url(settings.BROKER_URL)
         self.subsystem_metrics = s_metrics.Metrics()
         self.prof = AWXProfiler("CallbackBrokerWorker")
-        self.blpop_has_items = True
         for key in self.redis.keys('awx_callback_receiver_statistics_*'):
             self.redis.delete(key)
 
     def read(self, queue):
         try:
             res = self.redis.blpop(settings.CALLBACK_QUEUE, timeout=1)
-            if self.blpop_has_items:
-                self.subsystem_metrics.set('callback_receiver_events_queue_size_redis', self.redis.llen(settings.CALLBACK_QUEUE))
             if res is None:
-                self.blpop_has_items = False
                 return {'event': 'FLUSH'}
-            self.blpop_has_items = True
-            self.subsystem_metrics.inc('callback_receiver_events_popped_redis', 1)
-            self.subsystem_metrics.inc('callback_receiver_events_in_memory', 1)
             self.total += 1
             return json.loads(res[1])
         except redis.exceptions.RedisError:
@@ -74,6 +67,10 @@ class CallbackBrokerWorker(BaseWorker):
             logger.exception("failed to decode JSON message from redis")
         finally:
             self.record_statistics()
+            self.subsystem_metrics.inc('callback_receiver_events_popped_redis', 1)
+            self.subsystem_metrics.inc('callback_receiver_events_in_memory', 1)
+            callback_queue_size = self.redis.llen(settings.CALLBACK_QUEUE)
+            self.subsystem_metrics.set('callback_receiver_events_queue_size_redis', callback_queue_size)
 
         return {'event': 'FLUSH'}
 
@@ -145,16 +142,13 @@ class CallbackBrokerWorker(BaseWorker):
                     emit_event_detail(e)
             self.buff = {}
             self.last_flush = time.time()
-            try:
-                # only update metrics if we saved events
-                if (bulk_events_saved + singular_events_saved) > 0:
-                    self.subsystem_metrics.inc('callback_receiver_batch_events_errors', metrics_events_batch_save_errors)
-                    self.subsystem_metrics.inc('callback_receiver_events_insert_db_seconds', duration_to_save.total_seconds())
-                    self.subsystem_metrics.inc('callback_receiver_events_insert_db', bulk_events_saved + singular_events_saved)
-                    self.subsystem_metrics.observe('callback_receiver_batch_events_insert_db', bulk_events_saved)
-                    self.subsystem_metrics.inc('callback_receiver_events_in_memory', -(bulk_events_saved + singular_events_saved))
-            except Exception:
-                logger.exception('Could not update callback_receiver statistics')
+            # only update metrics if we saved events
+            if (bulk_events_saved + singular_events_saved) > 0:
+                self.subsystem_metrics.inc('callback_receiver_batch_events_errors', metrics_events_batch_save_errors)
+                self.subsystem_metrics.inc('callback_receiver_events_insert_db_seconds', duration_to_save.total_seconds())
+                self.subsystem_metrics.inc('callback_receiver_events_insert_db', bulk_events_saved + singular_events_saved)
+                self.subsystem_metrics.observe('callback_receiver_batch_events_insert_db', bulk_events_saved)
+                self.subsystem_metrics.inc('callback_receiver_events_in_memory', -(bulk_events_saved + singular_events_saved))
 
     def perform_work(self, body):
         try:

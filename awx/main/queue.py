@@ -35,4 +35,3 @@ class CallbackQueueDispatcher(object):
 
     def dispatch(self, obj):
         self.connection.rpush(self.queue, json.dumps(obj, cls=AnsibleJSONEncoder))
-        self.subsystem_metrics.inc('callback_receiver_events_insert_redis', 1)
