@@ -48,7 +48,6 @@ class CallbackBrokerWorker(BaseWorker):
         self.buff = {}
         self.pid = os.getpid()
         self.redis = redis.Redis.from_url(settings.BROKER_URL)
-        self.redis.client_setname("callbackbrokerworker")
         self.subsystem_metrics = s_metrics.Metrics()
         self.prof = AWXProfiler("CallbackBrokerWorker")
         self.blpop_has_items = True
