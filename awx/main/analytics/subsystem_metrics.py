@@ -117,11 +117,16 @@ class HistogramM(BaseM):
 
 
 class Metrics():
-    def __init__(self):
+    def __init__(self, auto_pipe_execute = True, pipe_execute_interval = 2):
         self.pipe = redis.Redis.from_url(settings.BROKER_URL).pipeline()
         self.conn = redis.Redis.from_url(settings.BROKER_URL)
         self.conn.client_setname(__name__)
         self.last_pipe_execute= time.time()
+        self.pipe_execute_interval = pipe_execute_interval
+        # auto pipe execute will commit transaction of metric data to redis
+        # at a regular interval (pipe_execute_interval). If set to False,
+        # the calling function should call .pipe_execute() explicitly
+        self.auto_pipe_execute = auto_pipe_execute
         Instance = apps.get_model('main', 'Instance')
         instance_name = Instance.objects.me().hostname
         self.instance_name = instance_name
@@ -151,21 +156,21 @@ class Metrics():
         for m in METRICSLIST:
             self.METRICS[m.field] = m
 
-    def inc(self, field, value, force_pipe_execute = False):
+    def inc(self, field, value):
         if value != 0:
             self.METRICS[field].inc(value)
-            self.pipe_execute(force_pipe_execute)
-            # logger.debug(f"updating {field}")
+            if self.auto_pipe_execute == True and self.should_pipe_execute() == True:
+                self.pipe_execute()
 
-    def set(self, field, value, force_pipe_execute = False):
+    def set(self, field, value):
         self.METRICS[field].set(value)
-        # logger.debug(f"updating {field}")
-        self.pipe_execute(force_pipe_execute)
+        if self.auto_pipe_execute == True and self.should_pipe_execute() == True:
+            self.pipe_execute()
 
-    def observe(self, field, value, force_pipe_execute = False):
+    def observe(self, field, value):
         self.METRICS[field].observe(value)
-        # logger.debug(f"updating {field}")
-        self.pipe_execute(force_pipe_execute)
+        if self.auto_pipe_execute == True and self.should_pipe_execute() == True:
+            self.pipe_execute()
 
     def serialize_local_metrics(self):
         data = self.load_local_metrics()
@@ -185,17 +190,16 @@ class Metrics():
         self.conn.set(root_key + "_instance_" + data['instance'], data['metrics'])
 
     def should_pipe_execute(self):
-        if time.time() - self.last_pipe_execute > settings.SUBSYSTEM_METRICS_STORE_INTERVAL:
+        if time.time() - self.last_pipe_execute > self.pipe_execute_interval:
             return True
         else:
             return False
 
-    def pipe_execute(self, force_pipe_execute = False):
-        if force_pipe_execute == True or self.should_pipe_execute() == True:
-            for m in self.METRICS:
-                self.METRICS[m].store_value(self.pipe)
-            self.pipe.execute()
-            self.last_pipe_execute = time.time()
+    def pipe_execute(self):
+        for m in self.METRICS:
+            self.METRICS[m].store_value(self.pipe)
+        self.pipe.execute()
+        self.last_pipe_execute = time.time()
 
     def send_metrics(self):
         payload = {
