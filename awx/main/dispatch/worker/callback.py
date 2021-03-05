@@ -77,7 +77,7 @@ class CallbackBrokerWorker(BaseWorker):
     def record_read_metrics(self):
         if self.queue_pop == 0:
             return
-        if self.subsystem_metrics.should_pipe_execute() == True:
+        if self.subsystem_metrics.should_pipe_execute() is True:
             queue_size = self.redis.llen(self.queue_name)
             self.subsystem_metrics.set('callback_receiver_events_queue_size_redis', queue_size)
             self.subsystem_metrics.inc('callback_receiver_events_popped_redis', self.queue_pop)
@@ -160,7 +160,7 @@ class CallbackBrokerWorker(BaseWorker):
                 self.subsystem_metrics.inc('callback_receiver_events_insert_db', bulk_events_saved + singular_events_saved)
                 self.subsystem_metrics.observe('callback_receiver_batch_events_insert_db', bulk_events_saved)
                 self.subsystem_metrics.inc('callback_receiver_events_in_memory', -(bulk_events_saved + singular_events_saved))
-            if self.subsystem_metrics.should_pipe_execute() == True:
+            if self.subsystem_metrics.should_pipe_execute() is True:
                 self.subsystem_metrics.pipe_execute()
 
     def perform_work(self, body):

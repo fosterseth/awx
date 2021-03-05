@@ -68,7 +68,7 @@ class SetM(BaseM):
 
     def store_value(self, conn):
         # do not set value if it has not changed since last time this was called
-        if not self.current_value == None:
+        if self.current_value is not None:
             conn.hset(root_key, self.field, self.current_value)
             self.current_value = None
 
@@ -157,17 +157,17 @@ class Metrics():
     def inc(self, field, value):
         if value != 0:
             self.METRICS[field].inc(value)
-            if self.auto_pipe_execute == True and self.should_pipe_execute() == True:
+            if self.auto_pipe_execute is True and self.should_pipe_execute() is True:
                 self.pipe_execute()
 
     def set(self, field, value):
         self.METRICS[field].set(value)
-        if self.auto_pipe_execute == True and self.should_pipe_execute() == True:
+        if self.auto_pipe_execute is True and self.should_pipe_execute() is True:
             self.pipe_execute()
 
     def observe(self, field, value):
         self.METRICS[field].observe(value)
-        if self.auto_pipe_execute == True and self.should_pipe_execute() == True:
+        if self.auto_pipe_execute is True and self.should_pipe_execute() is True:
             self.pipe_execute()
 
     def serialize_local_metrics(self):
