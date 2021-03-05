@@ -148,8 +148,6 @@ class Metrics():
             HistogramM('callback_receiver_batch_events_insert_db',
                        'Number of events batch inserted into database',
                        [10, 50, 150, 350, 650, 1000]),
-            # IntM('callback_receiver_events_insert_redis',
-            #      'Number of events inserted into redis'),
         ]
         # turn metric list into dictionary with the metric name as a key
         self.METRICS = {}
