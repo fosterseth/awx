@@ -206,6 +206,8 @@ class Metrics():
             'instance': self.instance_name,
             'metrics': self.serialize_local_metrics(),
         }
+        # store a local copy as well
+        self.store_metrics(json.dumps(payload))
         emit_channel_notification("metrics", payload)
 
     def load_other_metrics(self, request):
@@ -224,10 +226,7 @@ class Metrics():
         instance_data = {}
         for instance in instance_names:
             if len(instances_filter) == 0 or instance in instances_filter:
-                if instance == self.instance_name:
-                    instance_metrics = self.load_local_metrics()
-                else:
-                    instance_metrics = json.loads(self.conn.get(root_key + '_instance_' + instance).decode('UTF-8'))
+                instance_metrics = json.loads(self.conn.get(root_key + '_instance_' + instance).decode('UTF-8'))
                 instance_data[instance] = instance_metrics
         return instance_data
 
