@@ -146,7 +146,7 @@ class Metrics():
                  'Number of events batch inserted into database'),
             HistogramM('callback_receiver_batch_events_insert_db',
                        'Number of events batch inserted into database',
-                       [10, 50, 150, 350, 650, 1000]),
+                       settings.SUBSYSTEM_METRICS_BATCH_INSERT_BUCKETS),
         ]
         # turn metric list into dictionary with the metric name as a key
         self.METRICS = {}

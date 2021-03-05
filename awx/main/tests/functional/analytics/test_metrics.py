@@ -62,8 +62,10 @@ def test_metrics_counts(organization_factory, job_template_factory, workflow_job
             name, _, value, _, _ = sample
             assert EXPECTED_VALUES[name] == value
 
+
 def get_metrics_view_db_only():
     return reverse('api:metrics_view') + '?dbonly=1'
+
 
 @pytest.mark.django_db
 def test_metrics_permissions(get, admin, org_admin, alice, bob, organization):
@@ -76,7 +78,7 @@ def test_metrics_permissions(get, admin, org_admin, alice, bob, organization):
 
     Role.singleton('system_auditor').members.add(bob)
     bob.is_system_auditor = True
-    assert get(reverse(get_metrics_view_db_only(), user=bob).status_code == 200
+    assert get(get_metrics_view_db_only(), user=bob).status_code == 200
 
 
 @pytest.mark.django_db
