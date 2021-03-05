@@ -120,7 +120,6 @@ class Metrics():
     def __init__(self, auto_pipe_execute = True, pipe_execute_interval = 2):
         self.pipe = redis.Redis.from_url(settings.BROKER_URL).pipeline()
         self.conn = redis.Redis.from_url(settings.BROKER_URL)
-        self.conn.client_setname(__name__)
         self.last_pipe_execute= time.time()
         self.pipe_execute_interval = pipe_execute_interval
         # auto pipe execute will commit transaction of metric data to redis
