@@ -18,6 +18,10 @@ class BaseM():
         self.help_text = help_text
         self.current_value = 0
 
+    def clear_value(self, conn):
+        conn.hset(root_key, self.field, 0)
+        self.current_value = 0
+
     def inc(self, value):
         self.current_value += value
 
@@ -82,6 +86,14 @@ class HistogramM(BaseM):
         self.inf = IntM(field + '_inf', '')
         self.sum = IntM(field + '_sum', '')
         super(HistogramM, self).__init__(field, help_text)
+
+    def clear_value(self, conn):
+        conn.hset(root_key, self.field, 0)
+        self.inf.clear_value(conn)
+        self.sum.clear_value(conn)
+        for b in self.buckets_to_keys.values():
+            b.clear_value(conn)
+        super(HistogramM, self).clear_value(conn)
 
     def observe(self, value):
         for b in self.buckets:
@@ -152,6 +164,10 @@ class Metrics():
         self.METRICS = {}
         for m in METRICSLIST:
             self.METRICS[m.field] = m
+
+    def clear_values(self):
+        for m in self.METRICS.values():
+            m.clear_value(self.conn)
 
     def inc(self, field, value):
         if value != 0:
