@@ -48,21 +48,27 @@ class CallbackBrokerWorker(BaseWorker):
         self.buff = {}
         self.pid = os.getpid()
         self.redis = redis.Redis.from_url(settings.BROKER_URL)
+        self.redis_pipe = redis.Redis.from_url(settings.BROKER_URL).pipeline()
+        self.last_redis_queue_len = 0
         self.subsystem_metrics = s_metrics.Metrics(auto_pipe_execute = False)
-        self.queue_pop = 0
         self.queue_name = settings.CALLBACK_QUEUE
         self.prof = AWXProfiler("CallbackBrokerWorker")
         for key in self.redis.keys('awx_callback_receiver_statistics_*'):
             self.redis.delete(key)
 
     def read(self, queue):
+        event_from_redis = None
         try:
-            res = self.redis.blpop(self.queue_name, timeout=1)
-            if res is None:
+            self.redis_pipe.llen(self.queue_name)
+            self.redis_pipe.blpop(self.queue_name, timeout=1)
+            self.subsystem_metrics.set('callback_receiver_events_queue_size_redis', self.last_redis_queue_len)
+
+            self.last_redis_queue_len, event_from_redis = self.subsystem_metrics.pipe_execute(self.redis_pipe)[0:2]
+
+            if event_from_redis is None:
                 return {'event': 'FLUSH'}
             self.total += 1
-            self.queue_pop += 1
-            return json.loads(res[1])
+            return json.loads(event_from_redis[1])
         except redis.exceptions.RedisError:
             logger.exception("encountered an error communicating with redis")
             time.sleep(1)
@@ -70,20 +76,19 @@ class CallbackBrokerWorker(BaseWorker):
             logger.exception("failed to decode JSON message from redis")
         finally:
             self.record_statistics()
-            self.record_read_metrics()
+            if event_from_redis:
+                self.record_read_metrics()
 
         return {'event': 'FLUSH'}
 
     def record_read_metrics(self):
-        if self.queue_pop == 0:
-            return
-        if self.subsystem_metrics.should_pipe_execute() is True:
-            queue_size = self.redis.llen(self.queue_name)
-            self.subsystem_metrics.set('callback_receiver_events_queue_size_redis', queue_size)
-            self.subsystem_metrics.inc('callback_receiver_events_popped_redis', self.queue_pop)
-            self.subsystem_metrics.inc('callback_receiver_events_in_memory', self.queue_pop)
-            self.subsystem_metrics.pipe_execute()
-            self.queue_pop = 0
+        '''
+        Statistics will always lag one loop behind. The stats piggyback onto the redis queue pop via 
+        pipelining. We can not update the count based on the fail/success of a queue pop unless we
+        perform the actual queue pop. If we perform the queue pop, then we have no pipeline to piggyback on.
+        '''
+        self.subsystem_metrics.inc('callback_receiver_events_popped_redis', 1)
+        self.subsystem_metrics.inc('callback_receiver_events_in_memory', 1)
 
     def record_statistics(self):
         # buffer stat recording to once per (by default) 5s
@@ -160,7 +165,6 @@ class CallbackBrokerWorker(BaseWorker):
                 self.subsystem_metrics.inc('callback_receiver_events_insert_db', bulk_events_saved + singular_events_saved)
                 self.subsystem_metrics.observe('callback_receiver_batch_events_insert_db', bulk_events_saved)
                 self.subsystem_metrics.inc('callback_receiver_events_in_memory', -(bulk_events_saved + singular_events_saved))
-            if self.subsystem_metrics.should_pipe_execute() is True:
                 self.subsystem_metrics.pipe_execute()
 
     def perform_work(self, body):

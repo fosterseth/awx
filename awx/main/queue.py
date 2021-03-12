@@ -29,8 +29,11 @@ class CallbackQueueDispatcher(object):
     def __init__(self):
         self.queue = getattr(settings, 'CALLBACK_QUEUE', '')
         self.logger = logging.getLogger('awx.main.queue.CallbackQueueDispatcher')
-        self.connection = redis.Redis.from_url(settings.BROKER_URL)
-        self.subsystem_metrics = s_metrics.Metrics()
+        self.connection = redis.Redis.from_url(settings.BROKER_URL).pipeline()
+        self.subsystem_metrics = s_metrics.Metrics(auto_pipe_execute=False)
 
     def dispatch(self, obj):
+        self.subsystem_metrics.inc('callback_receiver_events_inserted_redis', 1)
         self.connection.rpush(self.queue, json.dumps(obj, cls=AnsibleJSONEncoder))
+        self.subsystem_metrics.pipe_execute(self.connection)
+

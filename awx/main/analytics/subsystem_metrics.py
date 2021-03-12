@@ -134,6 +134,10 @@ class Metrics():
         METRICSLIST = [
             SetM('callback_receiver_events_queue_size_redis',
                  'Current number of events in redis queue'),
+            IntM('callback_receiver_events_inserted_redis',
+                 'Number of playbook events inserted into redis'),
+            IntM('callback_receiver_events_popped_redis',
+                 'Number of events popped from redis'),
             IntM('callback_receiver_events_popped_redis',
                  'Number of events popped from redis'),
             IntM('callback_receiver_events_in_memory',
@@ -192,11 +196,18 @@ class Metrics():
         else:
             return False
 
-    def pipe_execute(self):
+    def pipe_execute(self, pipe=None):
+        passed_in_pipe = False
+        if pipe:
+            passed_in_pipe = True
+        else:
+            pipe = self.pipe
         for m in self.METRICS:
-            self.METRICS[m].store_value(self.pipe)
-        self.pipe.execute()
-        self.last_pipe_execute = time.time()
+            self.METRICS[m].store_value(pipe)
+        res = pipe.execute()
+        if not passed_in_pipe:
+            self.last_pipe_execute = time.time()
+        return res
 
     def send_metrics(self):
         payload = {
@@ -223,8 +234,12 @@ class Metrics():
         instance_data = {}
         for instance in instance_names:
             if len(instances_filter) == 0 or instance in instances_filter:
-                instance_metrics = json.loads(self.conn.get(root_key + '_instance_' + instance).decode('UTF-8'))
-                instance_data[instance] = instance_metrics
+                instance_data_from_redis = self.conn.get(root_key + '_instance_' + instance)
+                '''
+                Data from other instances may not be available. That is OK.
+                '''
+                if instance_data_from_redis:
+                    instance_data[instance] = json.loads(instance_data_from_redis.decode('UTF-8'))
         return instance_data
 
     def generate_metrics(self, request):
