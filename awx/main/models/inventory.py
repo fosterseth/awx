@@ -50,6 +50,7 @@ from awx.main.models.notifications import (
 from awx.main.models.credential.injectors import _openstack_data
 from awx.main.utils import _inventory_updates
 from awx.main.utils.safe_yaml import sanitize_jinja
+from awx.main.utils.execution_environments import to_container_path
 
 
 __all__ = ['Inventory', 'Host', 'Group', 'InventorySource', 'InventoryUpdate', 'SmartInventoryMembership']
@@ -803,6 +804,12 @@ class Group(CommonModelNameNotUnique, RelatedJobsMixin):
         return UnifiedJob.objects.non_polymorphic().filter(Q(job__inventory=self.inventory) | Q(inventoryupdate__inventory_source__groups=self))
 
 
+class HostMetric(models.Model):
+    hostname = models.CharField(primary_key=True, max_length=512)
+    first_automation = models.DateTimeField(auto_now_add=True, null=False, db_index=True, help_text=_('When the host was first automated against'))
+    last_automation = models.DateTimeField(db_index=True, help_text=_('When the host was last automated against'))
+
+
 class InventorySourceOptions(BaseModel):
     """
     Common fields for InventorySource and InventoryUpdate.
@@ -1505,7 +1512,7 @@ class openstack(PluginFileInjector):
         env = super(openstack, self).get_plugin_env(inventory_update, private_data_dir, private_data_files)
         credential = inventory_update.get_cloud_credential()
         cred_data = private_data_files['credentials']
-        env['OS_CLIENT_CONFIG_FILE'] = os.path.join('/runner', os.path.basename(cred_data[credential]))
+        env['OS_CLIENT_CONFIG_FILE'] = to_container_path(cred_data[credential], private_data_dir)
         return env
 
 

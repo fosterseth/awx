@@ -28,6 +28,7 @@ import threading
 import concurrent.futures
 from base64 import b64encode
 import subprocess
+import sys
 
 # Django
 from django.conf import settings
@@ -95,8 +96,9 @@ from awx.main.utils import (
     get_awx_version,
     deepmerge,
     parse_yaml_or_json,
+    cleanup_new_process,
 )
-from awx.main.utils.execution_environments import get_default_execution_environment, get_default_pod_spec
+from awx.main.utils.execution_environments import get_default_execution_environment, get_default_pod_spec, CONTAINER_ROOT, to_container_path
 from awx.main.utils.ansible import read_ansible_config
 from awx.main.utils.external_logging import reconfigure_rsyslog
 from awx.main.utils.safe_yaml import safe_dump, sanitize_jinja
@@ -873,11 +875,12 @@ class BaseTask(object):
 
         path = tempfile.mkdtemp(prefix='awx_%s_' % instance.pk, dir=pdd_wrapper_path)
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-        runner_project_folder = os.path.join(path, 'project')
-        if not os.path.exists(runner_project_folder):
-            # Ansible Runner requires that this directory exists.
-            # Specifically, when using process isolation
-            os.mkdir(runner_project_folder)
+        # Ansible runner requires that project exists,
+        # and we will write files in the other folders without pre-creating the folder
+        for subfolder in ('project', 'inventory', 'env'):
+            runner_subfolder = os.path.join(path, subfolder)
+            if not os.path.exists(runner_subfolder):
+                os.mkdir(runner_subfolder)
         return path
 
     def build_private_data_files(self, instance, private_data_dir):
@@ -921,7 +924,7 @@ class BaseTask(object):
                 # Instead, ssh private key file is explicitly passed via an
                 # env variable.
                 else:
-                    handle, path = tempfile.mkstemp(dir=private_data_dir)
+                    handle, path = tempfile.mkstemp(dir=os.path.join(private_data_dir, 'env'))
                     f = os.fdopen(handle, 'w')
                     f.write(data)
                     f.close()
@@ -1034,7 +1037,6 @@ class BaseTask(object):
         self.host_map = {hostname: hv.pop('remote_tower_id', '') for hostname, hv in script_data.get('_meta', {}).get('hostvars', {}).items()}
         json_data = json.dumps(script_data)
         path = os.path.join(private_data_dir, 'inventory')
-        os.makedirs(path, mode=0o700)
         fn = os.path.join(path, 'hosts')
         with open(fn, 'w') as f:
             os.chmod(fn, stat.S_IRUSR | stat.S_IXUSR | stat.S_IWUSR)
@@ -1531,8 +1533,8 @@ class RunJob(BaseTask):
         # Set environment variables for cloud credentials.
         cred_files = private_data_files.get('credentials', {})
         for cloud_cred in job.cloud_credentials:
-            if cloud_cred and cloud_cred.credential_type.namespace == 'openstack':
-                env['OS_CLIENT_CONFIG_FILE'] = os.path.join('/runner', os.path.basename(cred_files.get(cloud_cred, '')))
+            if cloud_cred and cloud_cred.credential_type.namespace == 'openstack' and cred_files.get(cloud_cred, ''):
+                env['OS_CLIENT_CONFIG_FILE'] = to_container_path(cred_files.get(cloud_cred, ''), private_data_dir)
 
         for network_cred in job.network_credentials:
             env['ANSIBLE_NET_USERNAME'] = network_cred.get_input('username', default='')
@@ -1564,8 +1566,7 @@ class RunJob(BaseTask):
                 for path in config_values[config_setting].split(':'):
                     if path not in paths:
                         paths = [config_values[config_setting]] + paths
-            # FIXME: again, figure out more elegant way for inside container
-            paths = [os.path.join('/runner', folder)] + paths
+            paths = [os.path.join(CONTAINER_ROOT, folder)] + paths
             env[env_key] = os.pathsep.join(paths)
 
         return env
@@ -1766,6 +1767,7 @@ class RunJob(BaseTask):
             )
             if branch_override:
                 sync_metafields['scm_branch'] = job.scm_branch
+                sync_metafields['scm_clean'] = True  # to accomidate force pushes
             if 'update_' not in sync_metafields['job_tags']:
                 sync_metafields['scm_revision'] = job_revision
             local_project_sync = job.project.create_project_update(_eager_fields=sync_metafields)
@@ -2391,8 +2393,7 @@ class RunInventoryUpdate(BaseTask):
                 for path in config_values[config_setting].split(':'):
                     if path not in paths:
                         paths = [config_values[config_setting]] + paths
-            # FIXME: containers
-            paths = [os.path.join('/runner', folder)] + paths
+            paths = [os.path.join(CONTAINER_ROOT, folder)] + paths
             env[env_key] = os.pathsep.join(paths)
 
         return env
@@ -2421,14 +2422,14 @@ class RunInventoryUpdate(BaseTask):
 
         # Add arguments for the source inventory file/script/thing
         rel_path = self.pseudo_build_inventory(inventory_update, private_data_dir)
-        container_location = os.path.join('/runner', rel_path)  # TODO: make container paths elegant
+        container_location = os.path.join(CONTAINER_ROOT, rel_path)
         source_location = os.path.join(private_data_dir, rel_path)
 
         args.append('-i')
         args.append(container_location)
 
         args.append('--output')
-        args.append(os.path.join('/runner', 'artifacts', str(inventory_update.id), 'output.json'))
+        args.append(os.path.join(CONTAINER_ROOT, 'artifacts', str(inventory_update.id), 'output.json'))
 
         if os.path.isdir(source_location):
             playbook_dir = container_location
@@ -2460,12 +2461,12 @@ class RunInventoryUpdate(BaseTask):
         if injector is not None:
             content = injector.inventory_contents(inventory_update, private_data_dir)
             # must be a statically named file
-            inventory_path = os.path.join(private_data_dir, injector.filename)
+            inventory_path = os.path.join(private_data_dir, 'inventory', injector.filename)
             with open(inventory_path, 'w') as f:
                 f.write(content)
             os.chmod(inventory_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
-            rel_path = injector.filename
+            rel_path = os.path.join('inventory', injector.filename)
         elif src == 'scm':
             rel_path = os.path.join('project', inventory_update.source_path)
 
@@ -2478,10 +2479,9 @@ class RunInventoryUpdate(BaseTask):
          - SCM, where source needs to live in the project folder
         """
         src = inventory_update.source
-        container_dir = '/runner'  # TODO: make container paths elegant
         if src == 'scm' and inventory_update.source_project_update:
-            return os.path.join(container_dir, 'project')
-        return container_dir
+            return os.path.join(CONTAINER_ROOT, 'project')
+        return CONTAINER_ROOT
 
     def build_playbook_path_relative_to_cwd(self, inventory_update, private_data_dir):
         return None
@@ -2893,6 +2893,16 @@ def deep_copy_model_obj(model_module, model_name, obj_pk, new_obj_pk, user_pk, u
         update_inventory_computed_fields.delay(new_obj.id)
 
 
+class TransmitterThread(threading.Thread):
+    def run(self):
+        self.exc = None
+
+        try:
+            super().run()
+        except Exception:
+            self.exc = sys.exc_info()
+
+
 class AWXReceptorJob:
     def __init__(self, task=None, runner_params=None):
         self.task = task
@@ -2920,7 +2930,8 @@ class AWXReceptorJob:
         # reading.
         sockin, sockout = socket.socketpair()
 
-        threading.Thread(target=self.transmit, args=[sockin]).start()
+        transmitter_thread = TransmitterThread(target=self.transmit, args=[sockin])
+        transmitter_thread.start()
 
         # submit our work, passing
         # in the right side of our socketpair for reading.
@@ -2929,6 +2940,11 @@ class AWXReceptorJob:
 
         sockin.close()
         sockout.close()
+
+        if transmitter_thread.exc:
+            raise transmitter_thread.exc[1].with_traceback(transmitter_thread.exc[2])
+
+        transmitter_thread.join()
 
         resultsock, resultfile = receptor_ctl.get_work_results(self.unit_id, return_socket=True, return_sockfile=True)
         # Both "processor" and "cancel_watcher" are spawned in separate threads.
@@ -2960,7 +2976,6 @@ class AWXReceptorJob:
                     logger.warn(f"Could not launch pod for {log_name}. Exceeded quota.")
                     self.task.update_model(self.task.instance.pk, status='pending')
                     return
-
                 # If ansible-runner ran, but an error occured at runtime, the traceback information
                 # is saved via the status_handler passed in to the processor.
                 if state_name == 'Succeeded':
@@ -2972,15 +2987,18 @@ class AWXReceptorJob:
 
     # Spawned in a thread so Receptor can start reading before we finish writing, we
     # write our payload to the left side of our socketpair.
+    @cleanup_new_process
     def transmit(self, _socket):
         if not settings.IS_K8S and self.work_type == 'local':
             self.runner_params['only_transmit_kwargs'] = True
 
-        ansible_runner.interface.run(streamer='transmit', _output=_socket.makefile('wb'), **self.runner_params)
+        try:
+            ansible_runner.interface.run(streamer='transmit', _output=_socket.makefile('wb'), **self.runner_params)
+        finally:
+            # Socket must be shutdown here, or the reader will hang forever.
+            _socket.shutdown(socket.SHUT_WR)
 
-        # Socket must be shutdown here, or the reader will hang forever.
-        _socket.shutdown(socket.SHUT_WR)
-
+    @cleanup_new_process
     def processor(self, resultfile):
         return ansible_runner.interface.run(
             streamer='process',
@@ -3022,6 +3040,7 @@ class AWXReceptorJob:
 
         return work_type
 
+    @cleanup_new_process
     def cancel_watcher(self, processor_future):
         while True:
             if processor_future.done():
