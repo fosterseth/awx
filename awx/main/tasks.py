@@ -410,9 +410,9 @@ def cleanup_execution_environment_images():
 
 @task(queue=get_local_queuename)
 def cluster_node_health_check(node):
-    '''
+    """
     Used for the health check endpoint, refreshes the status of the instance, but must be ran on target node
-    '''
+    """
     if node == '':
         logger.warn('Local health check incorrectly called with blank string')
         return
@@ -475,7 +475,10 @@ def inspect_execution_nodes(instance_list):
         for ad in connections:
             hostname = ad['NodeID']
             commands = ad.get('WorkCommands') or []
-            if 'ansible-runner' not in commands:
+            worktypes = []
+            for c in commands:
+                worktypes.append(c["WorkType"])
+            if 'ansible-runner' not in worktypes:
                 continue
             changed = False
             if hostname in node_lookup:
@@ -3081,7 +3084,7 @@ class AWXReceptorJob:
         _kw = {}
         if self.work_type == 'ansible-runner':
             _kw['node'] = self.task.instance.execution_node
-        result = receptor_ctl.submit_work(worktype=self.work_type, payload=sockout.makefile('rb'), params=self.receptor_params, **_kw)
+        result = receptor_ctl.submit_work(worktype=self.work_type, payload=sockout.makefile('rb'), params=self.receptor_params, signwork=True, **_kw)
         self.unit_id = result['unitid']
         self.task.update_model(self.task.instance.pk, work_unit_id=result['unitid'])
 

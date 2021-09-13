@@ -615,11 +615,11 @@ class ProjectUpdate(UnifiedJob, ProjectOptions, JobNotificationMixin, TaskManage
 
     @property
     def preferred_instance_groups(self):
-        '''
+        """
         Project updates should pretty much always run on the control plane
         however, we are not yet saying no to custom groupings within the control plane
         Thus, we return custom groups and then unconditionally add the control plane
-        '''
+        """
         if self.organization is not None:
             organization_groups = [x for x in self.organization.instance_groups.all()]
         else:

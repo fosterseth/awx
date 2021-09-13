@@ -37,6 +37,7 @@ def worker_info(node_name, work_type='ansible-runner'):
     kwargs = {}
     if work_type != 'local':
         kwargs['ttl'] = '20s'
+        kwargs['signwork'] = True
     result = receptor_ctl.submit_work(worktype=work_type, payload='', params={"params": f"--worker-info"}, node=node_name, **kwargs)
 
     unit_id = result['unitid']
