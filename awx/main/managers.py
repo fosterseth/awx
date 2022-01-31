@@ -104,13 +104,12 @@ class InstanceManager(models.Manager):
 
     def me(self):
         """Return the currently active instance."""
-        # If we are running unit tests, return a stub record.
-        if settings.IS_TESTING(sys.argv) or hasattr(sys, '_called_from_test'):
-            return self.model(id=1, hostname=settings.CLUSTER_HOST_ID, uuid=UUID_DEFAULT)
-
         node = self.filter(hostname=settings.CLUSTER_HOST_ID)
         if node.exists():
             return node[0]
+        # If we are running unit tests, return a stub record.
+        if settings.IS_TESTING(sys.argv) or hasattr(sys, '_called_from_test'):  # FIXME
+            return self.model(id=1, hostname=settings.CLUSTER_HOST_ID, uuid=UUID_DEFAULT)
         raise RuntimeError("No instance found with the current cluster host id")
 
     def register(self, uuid=None, hostname=None, ip_address=None, node_type='hybrid', defaults=None):
