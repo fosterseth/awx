@@ -77,7 +77,7 @@ from awx.conf.license import get_license
 from awx.main.utils.handlers import SpecialInventoryHandler
 from awx.main.tasks.system import handle_success_and_failure_notifications, update_smart_memberships_for_inventory, update_inventory_computed_fields
 from rest_framework.exceptions import PermissionDenied
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 logger = logging.getLogger('awx.main.tasks.jobs')
 
