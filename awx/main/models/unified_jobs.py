@@ -54,7 +54,7 @@ from awx.main.utils import polymorphic
 from awx.main.constants import ACTIVE_STATES, CAN_CANCEL
 from awx.main.redact import UriCleaner, REPLACE_STR
 from awx.main.consumers import emit_channel_notification
-from awx.main.fields import JSONField, JSONBField, AskForField, OrderedManyToManyField
+from awx.main.fields import AskForField, OrderedManyToManyField
 
 __all__ = ['UnifiedJobTemplate', 'UnifiedJob', 'StdoutMaxBytesExceeded']
 
@@ -653,8 +653,7 @@ class UnifiedJob(
         editable=False,
     )
     job_env = prevent_search(
-        JSONField(
-            blank=True,
+        models.JSONField(
             default=dict,
             editable=False,
         )
@@ -704,8 +703,7 @@ class UnifiedJob(
         'Credential',
         related_name='%(class)ss',
     )
-    installed_collections = JSONBField(
-        blank=True,
+    installed_collections = models.JSONField(
         default=dict,
         editable=False,
         help_text=_("The Collections names and versions installed in the execution environment."),

@@ -16,7 +16,6 @@ from django.utils.encoding import force_str
 from awx.api.versioning import reverse
 from awx.main import consumers
 from awx.main.managers import DeferJobCreatedManager
-from awx.main.fields import JSONField
 from awx.main.constants import MINIMAL_EVENTS
 from awx.main.models.base import CreatedModifiedModel
 from awx.main.utils import ignore_inventory_computed_fields, camelcase_to_underscore
@@ -209,10 +208,7 @@ class BasePlaybookEvent(CreatedModifiedModel):
         max_length=100,
         choices=EVENT_CHOICES,
     )
-    event_data = JSONField(
-        blank=True,
-        default=dict,
-    )
+    event_data = models.JSONField(default=dict)
     failed = models.BooleanField(
         default=False,
         editable=False,
@@ -648,10 +644,7 @@ class BaseCommandEvent(CreatedModifiedModel):
     class Meta:
         abstract = True
 
-    event_data = JSONField(
-        blank=True,
-        default=dict,
-    )
+    event_data = models.JSONField(default=dict)
     uuid = models.CharField(
         max_length=1024,
         default='',

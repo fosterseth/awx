@@ -44,7 +44,7 @@ from awx.main.models.notifications import (
     JobNotificationMixin,
 )
 from awx.main.utils import parse_yaml_or_json, getattr_dne, NullablePromptPseudoField
-from awx.main.fields import ImplicitRoleField, JSONField, AskForField
+from awx.main.fields import ImplicitRoleField, AskForField
 from awx.main.models.mixins import (
     ResourceMixin,
     SurveyJobTemplateMixin,
@@ -546,8 +546,7 @@ class Job(UnifiedJob, JobOptions, SurveyJobMixin, JobNotificationMixin, TaskMana
         editable=False,
         through='JobHostSummary',
     )
-    artifacts = JSONField(
-        blank=True,
+    artifacts = models.JSONField(
         default=dict,
         editable=False,
     )
@@ -885,7 +884,7 @@ class LaunchTimeConfigBase(BaseModel):
     )
     # All standard fields are stored in this dictionary field
     # This is a solution to the nullable CharField problem, specific to prompting
-    char_prompts = JSONField(blank=True, default=dict)
+    char_prompts = models.JSONField(default=dict, blank=True)
 
     def prompts_dict(self, display=False):
         data = {}
@@ -938,10 +937,9 @@ class LaunchTimeConfig(LaunchTimeConfigBase):
         abstract = True
 
     # Special case prompting fields, even more special than the other ones
-    extra_data = JSONField(blank=True, default=dict)
+    extra_data = models.JSONField(default=dict, blank=True)
     survey_passwords = prevent_search(
-        JSONField(
-            blank=True,
+        models.JSONField(
             default=dict,
             editable=False,
         )
