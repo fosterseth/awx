@@ -6,6 +6,7 @@ from unittest import mock
 
 from django.db.models.deletion import Collector, SET_NULL, CASCADE
 from django.core.management import call_command
+from django.db.models.query import QuerySet
 
 from awx.main.management.commands import cleanup_jobs
 from awx.main.utils.deletion import AWXCollector
@@ -127,7 +128,6 @@ def test_awxcollector(setup_environment):
     objects. The final result should be a dictionary that is
     equivalent to django's Collector.
     """
-
     (old_jobs, new_jobs, days_str) = setup_environment
     collector = Collector('default')
     collector.collect(old_jobs)
@@ -144,6 +144,8 @@ def test_awxcollector(setup_environment):
     for model, instances in awx_col.data.items():
         awx_del_dict.setdefault(model, set())
         for inst in instances:
+            # make sure awx collector is grabbing querysets
+            assert isinstance(inst, QuerySet)
             # .update() will put each object in a queryset into the set
             awx_del_dict[model].update(inst)
     assert awx_del_dict == collector.data
