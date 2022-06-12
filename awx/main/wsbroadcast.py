@@ -102,6 +102,7 @@ class WebsocketTask:
         try:
             async with aiohttp.ClientSession(headers={'secret': secret_val}, timeout=timeout) as session:
                 async with session.ws_connect(uri, ssl=self.verify_ssl, heartbeat=20) as websocket:
+                    await websocket.send_json(json.dumps({"instance": self.name}))
                     logger.info(f"Connection from {self.name} to {self.remote_host} established.")
                     self.stats.record_connection_established()
                     attempt = 0

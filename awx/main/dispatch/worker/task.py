@@ -64,7 +64,7 @@ class TaskWorker(BaseWorker):
         logger.debug('task {} starting {}(*{})'.format(uuid, task, args))
         return _call(*args, **kwargs)
 
-    def perform_work(self, body):
+    def perform_work(self, body, shared_dict=None):
         """
         Import and run code for a task e.g.,
 

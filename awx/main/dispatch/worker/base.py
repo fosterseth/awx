@@ -127,10 +127,45 @@ class AWXConsumerRedis(AWXConsumerBase):
     def run(self, *args, **kwargs):
         super(AWXConsumerRedis, self).run(*args, **kwargs)
         self.worker.on_start()
-
+        
         while True:
-            logger.debug(f'{os.getpid()} is alive')
-            time.sleep(60)
+            try:
+                with pg_bus_conn() as conn:
+                    for queue in self.queues:
+                        logger.debug(f"listening for events on {queue}")
+                        conn.listen(queue)
+                    for e in conn.events():
+                        logger.info(f"received group {e}")
+                        payload = json.loads(e.payload)
+                        job_id = payload["group_name"].rsplit("-")[-1]
+                        if payload["action"] == "add":
+                            logger.info(f"adding {job_id} to shared_dict")
+                            self.pool.shared_dict[job_id] = payload["instance"]
+                        elif payload["action"] == "discard":
+                            logger.info(f"removing {job_id} to shared_dict")
+                            del self.pool.shared_dict[job_id]
+                        self.pg_is_down = False
+                    if self.should_stop:
+                        return
+            except psycopg2.InterfaceError:
+                logger.warning("Stale Postgres message bus connection, reconnecting")
+                continue
+            except (db.DatabaseError, psycopg2.OperationalError):
+                # If we have attained stady state operation, tolerate short-term database hickups
+                if not self.pg_is_down:
+                    logger.exception(f"Error consuming new events from postgres, will retry for {self.pg_max_wait} s")
+                    self.pg_down_time = time.time()
+                    self.pg_is_down = True
+                if time.time() - self.pg_down_time > self.pg_max_wait:
+                    logger.warning(f"Postgres event consumer has not recovered in {self.pg_max_wait} s, exiting")
+                    raise
+                # Wait for a second before next attempt, but still listen for any shutdown signals
+                for i in range(10):
+                    if self.should_stop:
+                        return
+                    time.sleep(0.1)
+                for conn in db.connections.all():
+                    conn.close_if_unusable_or_obsolete()
 
 
 class AWXConsumerPG(AWXConsumerBase):
@@ -190,7 +225,7 @@ class BaseWorker(object):
     def read(self, queue):
         return queue.get(block=True, timeout=1)
 
-    def work_loop(self, queue, finished, idx, *args):
+    def work_loop(self, queue, finished, shared_dict, idx, *args):
         ppid = os.getppid()
         signal_handler = WorkerSignalHandler()
         while not signal_handler.kill_now:
@@ -212,7 +247,7 @@ class BaseWorker(object):
                     # If the database connection has a hiccup during the prior message, close it
                     # so we can establish a new connection
                     conn.close_if_unusable_or_obsolete()
-                self.perform_work(body, *args)
+                self.perform_work(body, shared_dict, *args)
             finally:
                 if 'uuid' in body:
                     uuid = body['uuid']

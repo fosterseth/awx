@@ -145,7 +145,7 @@ class CallbackBrokerWorker(BaseWorker):
             signal.signal(signal.SIGUSR1, self.toggle_profiling)
         return super(CallbackBrokerWorker, self).work_loop(*args, **kw)
 
-    def flush(self, force=False):
+    def flush(self, force=False, shared_dict=None):
         now = tz_now()
         if force or (time.time() - self.last_flush) > settings.JOB_EVENT_BUFFER_SECONDS or any([len(events) >= 1000 for events in self.buff.values()]):
             metrics_bulk_events_saved = 0
@@ -182,7 +182,15 @@ class CallbackBrokerWorker(BaseWorker):
                 for e in events:
                     if not getattr(e, '_skip_websocket_message', False):
                         metrics_events_broadcast += 1
-                        emit_event_detail(e)
+                        target_instance = None
+                        if isinstance(e, JobEvent):
+                            job_id = str(e.job_id)
+                            if job_id in shared_dict:
+                                logger.info(f"========== emitting event detail for {job_id}")
+                                target_instance = shared_dict[job_id]
+                            else:
+                                logger.info(f"========== NOT emitting event detail for {job_id}")
+                        emit_event_detail(e, target_instance=target_instance)
                     if getattr(e, '_notification_trigger_event', False):
                         job_stats_wrapup(getattr(e, e.JOB_REFERENCE), event=e)
             self.buff = {}
@@ -203,8 +211,9 @@ class CallbackBrokerWorker(BaseWorker):
             if self.subsystem_metrics.should_pipe_execute() is True:
                 self.subsystem_metrics.pipe_execute()
 
-    def perform_work(self, body):
+    def perform_work(self, body, shared_dict):
         try:
+            logger.debug(shared_dict)
             flush = body.get('event') == 'FLUSH'
             if flush:
                 self.last_event = ''
@@ -255,7 +264,7 @@ class CallbackBrokerWorker(BaseWorker):
             retries = 0
             while retries <= self.MAX_RETRIES:
                 try:
-                    self.flush(force=flush)
+                    self.flush(force=flush, shared_dict=shared_dict)
                     break
                 except (OperationalError, InterfaceError, InternalError):
                     if retries >= self.MAX_RETRIES:
