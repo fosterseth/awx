@@ -19,6 +19,7 @@ XRF_KEY = '_auth_user_xrf'
 
 instance_name = None
 
+
 class WebsocketSecretAuthHelper:
     """
     Middlewareish for websockets to verify node websocket broadcast interconnect.
@@ -94,7 +95,7 @@ class BroadcastConsumer(AsyncJsonWebsocketConsumer):
         await self.accept()
         await self.channel_layer.group_add(settings.BROADCAST_WEBSOCKET_GROUP_NAME, self.channel_name)
         logger.info(f"client '{self.channel_name}' joined the broadcast group.")
-    
+
     async def receive_json(self, data):
         logger.info(f"received json {data}")
         await self.channel_layer.group_add(json.loads(data)["instance"], self.channel_name)
@@ -106,15 +107,18 @@ class BroadcastConsumer(AsyncJsonWebsocketConsumer):
     async def internal_message(self, event):
         await self.send(event['text'])
 
+
 @sync_to_async
 def notify_callback_receiver(group_name, action):
     from django.apps import apps
     from awx.main.dispatch import pg_bus_conn
-    if group_name.startswith("job_events"): 
+
+    if group_name.startswith("job_events"):
         Instance = apps.get_model('main', 'Instance')
         instance_name = Instance.objects.me().hostname
         with pg_bus_conn() as conn:
-            conn.notify("callback_tasks",json.dumps({"group_name": group_name, "instance": instance_name, "action": action}))
+            conn.notify("callback_tasks", json.dumps({"group_name": group_name, "instance": instance_name, "action": action}))
+
 
 class EventConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
@@ -218,7 +222,7 @@ def _dump_payload(payload):
         return None
 
 
-def emit_channel_notification(group, payload, target_instance=None):
+def emit_channel_notification(group, payload, target_instances=set()):
     from awx.main.wsbroadcast import wrap_broadcast_msg  # noqa
 
     payload_dumped = _dump_payload(payload)
@@ -234,15 +238,16 @@ def emit_channel_notification(group, payload, target_instance=None):
         )
     )
 
-    if target_instance is None:
-        target_instance = settings.BROADCAST_WEBSOCKET_GROUP_NAME
-        
-    run_sync(
-        channel_layer.group_send(
-            target_instance,
-            {
-                "type": "internal.message",
-                "text": wrap_broadcast_msg(group, payload_dumped),
-            },
+    if not target_instances:
+        target_instance = {settings.BROADCAST_WEBSOCKET_GROUP_NAME}
+
+    for instance in target_instances:
+        run_sync(
+            channel_layer.group_send(
+                instance,
+                {
+                    "type": "internal.message",
+                    "text": wrap_broadcast_msg(group, payload_dumped),
+                },
+            )
         )
-    )

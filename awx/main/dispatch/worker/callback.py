@@ -141,11 +141,14 @@ class CallbackBrokerWorker(BaseWorker):
             logger.error(f'profiling is disabled, wrote {filepath}')
 
     def work_loop(self, *args, **kw):
+        self.pubsub = self.redis.pubsub()
+        self.pubsub.subscribe("job_subscriptions")
+        self.active_subscriptions = dict()
         if settings.AWX_CALLBACK_PROFILE:
             signal.signal(signal.SIGUSR1, self.toggle_profiling)
         return super(CallbackBrokerWorker, self).work_loop(*args, **kw)
 
-    def flush(self, force=False, shared_dict=None):
+    def flush(self, force=False):
         now = tz_now()
         if force or (time.time() - self.last_flush) > settings.JOB_EVENT_BUFFER_SECONDS or any([len(events) >= 1000 for events in self.buff.values()]):
             metrics_bulk_events_saved = 0
@@ -182,15 +185,15 @@ class CallbackBrokerWorker(BaseWorker):
                 for e in events:
                     if not getattr(e, '_skip_websocket_message', False):
                         metrics_events_broadcast += 1
-                        target_instance = None
                         if isinstance(e, JobEvent):
                             job_id = str(e.job_id)
-                            if job_id in shared_dict:
+                            if job_id in self.active_subscriptions and self.active_subscriptions[job_id]:
                                 logger.info(f"========== emitting event detail for {job_id}")
-                                target_instance = shared_dict[job_id]
+                                emit_event_detail(e, target_instances=self.active_subscriptions[job_id])
                             else:
                                 logger.info(f"========== NOT emitting event detail for {job_id}")
-                        emit_event_detail(e, target_instance=target_instance)
+                        else:
+                            emit_event_detail(e)
                     if getattr(e, '_notification_trigger_event', False):
                         job_stats_wrapup(getattr(e, e.JOB_REFERENCE), event=e)
             self.buff = {}
@@ -211,9 +214,29 @@ class CallbackBrokerWorker(BaseWorker):
             if self.subsystem_metrics.should_pipe_execute() is True:
                 self.subsystem_metrics.pipe_execute()
 
-    def perform_work(self, body, shared_dict):
+    def perform_work(self, body):
         try:
-            logger.debug(shared_dict)
+            sub_msg = self.pubsub.get_message()
+            logger.debug(self.active_subscriptions)
+            if sub_msg and sub_msg["data"]:
+                payload = json.loads(sub_msg["data"])
+                instance = payload["instance"]
+                job_id = payload["group_name"].rsplit("-")[-1]
+                if payload["action"] == "add":
+                    if not job_id in self.active_subscriptions:
+                        self.active_subscriptions[job_id] = set()
+                    logger.info(f"adding {instance} to {job_id}")
+                    self.active_subscriptions[job_id].add(instance)
+                elif payload["action"] == "discard":
+                    if job_id in self.active_subscriptions:
+                        logger.info(f"removing {instance} to {job_id}")
+                        self.active_subscriptions[job_id].discard(instance)
+                keys_to_del = []
+                for k, v in self.active_subscriptions.items():
+                    if not v:
+                        keys_to_del.append(k)
+                for k in keys_to_del:
+                    del self.active_subscriptions[k]
             flush = body.get('event') == 'FLUSH'
             if flush:
                 self.last_event = ''
@@ -264,7 +287,7 @@ class CallbackBrokerWorker(BaseWorker):
             retries = 0
             while retries <= self.MAX_RETRIES:
                 try:
-                    self.flush(force=flush, shared_dict=shared_dict)
+                    self.flush(force=flush)
                     break
                 except (OperationalError, InterfaceError, InternalError):
                     if retries >= self.MAX_RETRIES:

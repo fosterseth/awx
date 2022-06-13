@@ -58,7 +58,7 @@ def create_host_status_counts(event_data):
     return dict(host_status_counts)
 
 
-def emit_event_detail(event, target_instance=None):
+def emit_event_detail(event, target_instances=set()):
     if settings.UI_LIVE_UPDATES_ENABLED is False and event.event not in MINIMAL_EVENTS:
         return
     cls = event.__class__
@@ -100,7 +100,7 @@ def emit_event_detail(event, target_instance=None):
             'role': getattr(event, 'role', ''),
             'task': getattr(event, 'task', ''),
         },
-        target_instance=target_instance,
+        target_instances=target_instances,
     )
 
 

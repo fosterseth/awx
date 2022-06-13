@@ -127,7 +127,7 @@ class AWXConsumerRedis(AWXConsumerBase):
     def run(self, *args, **kwargs):
         super(AWXConsumerRedis, self).run(*args, **kwargs)
         self.worker.on_start()
-        
+
         while True:
             try:
                 with pg_bus_conn() as conn:
@@ -136,14 +136,7 @@ class AWXConsumerRedis(AWXConsumerBase):
                         conn.listen(queue)
                     for e in conn.events():
                         logger.info(f"received group {e}")
-                        payload = json.loads(e.payload)
-                        job_id = payload["group_name"].rsplit("-")[-1]
-                        if payload["action"] == "add":
-                            logger.info(f"adding {job_id} to shared_dict")
-                            self.pool.shared_dict[job_id] = payload["instance"]
-                        elif payload["action"] == "discard":
-                            logger.info(f"removing {job_id} to shared_dict")
-                            del self.pool.shared_dict[job_id]
+                        self.redis.publish("job_subscriptions", e.payload)
                         self.pg_is_down = False
                     if self.should_stop:
                         return
@@ -225,7 +218,7 @@ class BaseWorker(object):
     def read(self, queue):
         return queue.get(block=True, timeout=1)
 
-    def work_loop(self, queue, finished, shared_dict, idx, *args):
+    def work_loop(self, queue, finished, idx, *args):
         ppid = os.getppid()
         signal_handler = WorkerSignalHandler()
         while not signal_handler.kill_now:
@@ -247,7 +240,7 @@ class BaseWorker(object):
                     # If the database connection has a hiccup during the prior message, close it
                     # so we can establish a new connection
                     conn.close_if_unusable_or_obsolete()
-                self.perform_work(body, shared_dict, *args)
+                self.perform_work(body, *args)
             finally:
                 if 'uuid' in body:
                     uuid = body['uuid']

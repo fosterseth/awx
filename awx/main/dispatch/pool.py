@@ -72,8 +72,7 @@ class PoolWorker(object):
         self.managed_tasks = collections.OrderedDict()
         self.finished = MPQueue(queue_size) if self.track_managed_tasks else NoOpResultQueue()
         self.queue = MPQueue(queue_size)
-        self.shared_dict = kwargs.get("shared_dict", None)
-        self.process = Process(target=target, args=(self.queue, self.finished, self.shared_dict) + args)
+        self.process = Process(target=target, args=(self.queue, self.finished) + args)
         self.process.daemon = True
 
     def start(self):
@@ -223,7 +222,6 @@ class WorkerPool(object):
     def __init__(self, min_workers=None, queue_size=None):
         self.name = settings.CLUSTER_HOST_ID
         self.pid = os.getpid()
-        self.shared_dict = Manager().dict()
         self.min_workers = min_workers or settings.JOB_EVENT_WORKERS
         self.queue_size = queue_size or settings.JOB_EVENT_MAX_QUEUE_SIZE
         self.workers = []
@@ -244,7 +242,7 @@ class WorkerPool(object):
         # for the DB and cache connections (that way lies race conditions)
         django_connection.close()
         django_cache.close()
-        worker = self.pool_cls(self.queue_size, self.target, (idx,) + self.target_args, shared_dict=self.shared_dict)
+        worker = self.pool_cls(self.queue_size, self.target, (idx,) + self.target_args)
         self.workers.append(worker)
         try:
             worker.start()
