@@ -17,8 +17,6 @@ from channels.db import database_sync_to_async
 logger = logging.getLogger('awx.main.consumers')
 XRF_KEY = '_auth_user_xrf'
 
-instance_name = None
-
 
 class WebsocketSecretAuthHelper:
     """

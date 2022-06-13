@@ -9,7 +9,7 @@ from datetime import datetime
 from uuid import uuid4
 
 import collections
-from multiprocessing import Process, Manager
+from multiprocessing import Process
 from multiprocessing import Queue as MPQueue
 from queue import Full as QueueFull, Empty as QueueEmpty
 
