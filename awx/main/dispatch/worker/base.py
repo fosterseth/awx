@@ -81,6 +81,7 @@ class AWXConsumerBase(object):
             logger.error('unrecognized control message: {}'.format(control))
 
     def process_task(self, body):
+        body = json.loads(body)
         if 'control' in body:
             try:
                 return self.control(body)
@@ -114,64 +115,6 @@ class AWXConsumerBase(object):
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
 
-        # Child should implement other things here
-
-    def stop(self, signum, frame):
-        self.should_stop = True
-        logger.warning('received {}, stopping'.format(signame(signum)))
-        self.worker.on_stop()
-        raise SystemExit()
-
-
-class AWXConsumerRedis(AWXConsumerBase):
-    def run(self, *args, **kwargs):
-        super(AWXConsumerRedis, self).run(*args, **kwargs)
-        self.worker.on_start()
-
-        while True:
-            try:
-                with pg_bus_conn() as conn:
-                    for queue in self.queues:
-                        logger.debug(f"listening for events on {queue}")
-                        conn.listen(queue)
-                    for e in conn.events():
-                        logger.info(f"received group {e}")
-                        self.redis.publish("job_subscriptions", e.payload)
-                        self.pg_is_down = False
-                    if self.should_stop:
-                        return
-            except psycopg2.InterfaceError:
-                logger.warning("Stale Postgres message bus connection, reconnecting")
-                continue
-            except (db.DatabaseError, psycopg2.OperationalError):
-                # If we have attained stady state operation, tolerate short-term database hickups
-                if not self.pg_is_down:
-                    logger.exception(f"Error consuming new events from postgres, will retry for {self.pg_max_wait} s")
-                    self.pg_down_time = time.time()
-                    self.pg_is_down = True
-                if time.time() - self.pg_down_time > self.pg_max_wait:
-                    logger.warning(f"Postgres event consumer has not recovered in {self.pg_max_wait} s, exiting")
-                    raise
-                # Wait for a second before next attempt, but still listen for any shutdown signals
-                for i in range(10):
-                    if self.should_stop:
-                        return
-                    time.sleep(0.1)
-                for conn in db.connections.all():
-                    conn.close_if_unusable_or_obsolete()
-
-
-class AWXConsumerPG(AWXConsumerBase):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.pg_max_wait = settings.DISPATCHER_DB_DOWNTOWN_TOLLERANCE
-        # if no successful loops have ran since startup, then we should fail right away
-        self.pg_is_down = True  # set so that we fail if we get database errors on startup
-        self.pg_down_time = time.time() - self.pg_max_wait  # allow no grace period
-
-    def run(self, *args, **kwargs):
-        super(AWXConsumerPG, self).run(*args, **kwargs)
-
         logger.info(f"Running worker {self.name} listening to queues {self.queues}")
         init = False
 
@@ -184,7 +127,7 @@ class AWXConsumerPG(AWXConsumerBase):
                         self.worker.on_start()
                         init = True
                     for e in conn.events():
-                        self.process_task(json.loads(e.payload))
+                        self.process_task(e.payload)
                         self.pg_is_down = False
                     if self.should_stop:
                         return
@@ -212,6 +155,28 @@ class AWXConsumerPG(AWXConsumerBase):
                 # Log unanticipated exception in addition to writing to stderr to get timestamps and other metadata
                 logger.exception('Encountered unhandled error in dispatcher main loop')
                 raise
+
+        # Child should implement other things here
+
+    def stop(self, signum, frame):
+        self.should_stop = True
+        logger.warning('received {}, stopping'.format(signame(signum)))
+        self.worker.on_stop()
+        raise SystemExit()
+
+
+class AWXConsumerRedis(AWXConsumerBase):
+    def process_task(self, body):
+        self.redis.publish("job_subscriptions", body)
+
+
+class AWXConsumerPG(AWXConsumerBase):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pg_max_wait = settings.DISPATCHER_DB_DOWNTOWN_TOLLERANCE
+        # if no successful loops have ran since startup, then we should fail right away
+        self.pg_is_down = True  # set so that we fail if we get database errors on startup
+        self.pg_down_time = time.time() - self.pg_max_wait  # allow no grace period
 
 
 class BaseWorker(object):
