@@ -187,9 +187,9 @@ class CallbackBrokerWorker(BaseWorker):
                         metrics_events_broadcast += 1
                         if isinstance(e, JobEvent):
                             job_id = str(e.job_id)
-                            if job_id in self.active_subscriptions and self.active_subscriptions[job_id]:
+                            if job_id in self.active_subscriptions and self.active_subscriptions[job_id]["instances"].keys():
                                 logger.info(f"========== emitting event detail for {job_id}")
-                                emit_event_detail(e, target_instances=self.active_subscriptions[job_id])
+                                emit_event_detail(e, target_instances=self.active_subscriptions[job_id]["instances"].keys())
                             else:
                                 logger.info(f"========== NOT emitting event detail for {job_id}")
                         else:
@@ -213,6 +213,24 @@ class CallbackBrokerWorker(BaseWorker):
                 )
             if self.subsystem_metrics.should_pipe_execute() is True:
                 self.subsystem_metrics.pipe_execute()
+                
+    def modify_subscriber_count(self, job_id, instance, value):
+        if not job_id in self.active_subscriptions:
+            self.active_subscriptions[job_id] = dict(first_added=time.time(), instances=dict())
+        if not instance in self.active_subscriptions[job_id]["instances"]:
+            self.active_subscriptions[job_id]["instances"][instance] = 0
+        self.active_subscriptions[job_id]["instances"][instance] += value
+        if self.active_subscriptions[job_id]["instances"][instance] == 0:
+            del self.active_subscriptions[job_id]["instances"][instance]
+
+    def cleanup_active_subscriptions(self):
+        keys_to_del = []
+        current_time = time.time()
+        for k, v in self.active_subscriptions.items():
+            if current_time - v["first_added"] > 259200: # 3 days in seconds
+                keys_to_del.append(k)
+        for k in keys_to_del:
+            del self.active_subscriptions[k]
 
     def perform_work(self, body):
         try:
@@ -223,20 +241,12 @@ class CallbackBrokerWorker(BaseWorker):
                 instance = payload["instance"]
                 job_id = payload["group_name"].rsplit("-")[-1]
                 if payload["action"] == "add":
-                    if not job_id in self.active_subscriptions:
-                        self.active_subscriptions[job_id] = set()
-                    logger.info(f"adding {instance} to {job_id}")
-                    self.active_subscriptions[job_id].add(instance)
+                    self.modify_subscriber_count(job_id, instance, 1)
                 elif payload["action"] == "discard":
-                    if job_id in self.active_subscriptions:
-                        logger.info(f"removing {instance} to {job_id}")
-                        self.active_subscriptions[job_id].discard(instance)
-                keys_to_del = []
-                for k, v in self.active_subscriptions.items():
-                    if not v:
-                        keys_to_del.append(k)
-                for k in keys_to_del:
-                    del self.active_subscriptions[k]
+                    self.modify_subscriber_count(job_id, instance, -1)
+            
+            self.cleanup_active_subscriptions()
+                    
             flush = body.get('event') == 'FLUSH'
             if flush:
                 self.last_event = ''
