@@ -213,7 +213,7 @@ class CallbackBrokerWorker(BaseWorker):
                 )
             if self.subsystem_metrics.should_pipe_execute() is True:
                 self.subsystem_metrics.pipe_execute()
-                
+
     def modify_subscriber_count(self, job_id, instance, value):
         if not job_id in self.active_subscriptions:
             self.active_subscriptions[job_id] = dict(first_added=time.time(), instances=dict())
@@ -227,7 +227,7 @@ class CallbackBrokerWorker(BaseWorker):
         keys_to_del = []
         current_time = time.time()
         for k, v in self.active_subscriptions.items():
-            if current_time - v["first_added"] > 259200: # 3 days in seconds
+            if current_time - v["first_added"] > 259200:  # 3 days in seconds
                 keys_to_del.append(k)
         for k in keys_to_del:
             del self.active_subscriptions[k]
@@ -244,9 +244,9 @@ class CallbackBrokerWorker(BaseWorker):
                     self.modify_subscriber_count(job_id, instance, 1)
                 elif payload["action"] == "discard":
                     self.modify_subscriber_count(job_id, instance, -1)
-            
+
             self.cleanup_active_subscriptions()
-                    
+
             flush = body.get('event') == 'FLUSH'
             if flush:
                 self.last_event = ''
