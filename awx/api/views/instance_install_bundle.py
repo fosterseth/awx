@@ -6,6 +6,7 @@ import io
 import os
 import tarfile
 import tempfile
+import ipaddress
 
 import asn1
 from awx.api import serializers
@@ -95,6 +96,24 @@ class InstanceInstallBundle(GenericAPIView):
         encoder.write(hostname.encode(), nr=asn1.Numbers.UTF8String)
         hostname_asn1 = encoder.output()
 
+        # if instance_obj.ip_address string is a valid ipv4 address then set ip_address to that
+        # otherwise set ip_address to the hostname
+        ip_address = None
+        try:
+            ip_address = ipaddress.IPv4Address(instance_obj.ip_address)
+        except ipaddress.AddressValueError:
+            pass
+
+        if ip_address is None:
+            try:
+                ip_address = ipaddress.IPv4Address(hostname)
+            except ipaddress.AddressValueError:
+                pass
+
+        # TODO: fix this
+        if ip_address is None:
+            ip_address = '192.168.0.1'
+
         # generate certificate for the receptor
         csr = (
             x509.CertificateSigningRequestBuilder()
@@ -106,7 +125,9 @@ class InstanceInstallBundle(GenericAPIView):
                 )
             )
             .add_extension(
-                x509.SubjectAlternativeName([DNSName(hostname), OtherName(ObjectIdentifier(RECEPTOR_OID), hostname_asn1)]),
+                x509.SubjectAlternativeName(
+                    [DNSName(hostname), IPAddress(ipaddress.IPv4Address(ip_address)), OtherName(ObjectIdentifier(RECEPTOR_OID), hostname_asn1)]
+                ),
                 critical=False,
             )
             .sign(key, hashes.SHA256())
@@ -131,8 +152,8 @@ class InstanceInstallBundle(GenericAPIView):
             .not_valid_before(datetime.datetime.utcnow())
             .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=10))
             .add_extension(
-                x509.SubjectAlternativeName([DNSName(hostname), OtherName(ObjectIdentifier(RECEPTOR_OID), hostname_asn1)]),
-                critical=False,
+                csr.extensions.get_extension_for_class(x509.SubjectAlternativeName).value,
+                critical=csr.extensions.get_extension_for_class(x509.SubjectAlternativeName).critical,
             )
             .sign(ca_key, hashes.SHA256())
         )

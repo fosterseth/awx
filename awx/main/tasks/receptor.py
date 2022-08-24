@@ -602,7 +602,6 @@ class AWXReceptorJob:
 
 RECEPTOR_CONFIG_STARTER = (
     {'control-service': {'service': 'control', 'filename': '/var/run/receptor/receptor.sock', 'permissions': '0600'}},
-    {'local-only': None},
     {'work-command': {'worktype': 'local', 'command': 'ansible-runner', 'params': 'worker', 'allowruntimeparams': True}},
     {
         'work-kubernetes': {
