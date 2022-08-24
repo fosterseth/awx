@@ -156,8 +156,7 @@ def run_until_complete(node, timing_data=None, **kwargs):
     kwargs.setdefault('payload', '')
 
     transmit_start = time.time()
-    sign_work = False if settings.IS_K8S else True
-    result = receptor_ctl.submit_work(worktype='ansible-runner', node=node, signwork=sign_work, **kwargs)
+    result = receptor_ctl.submit_work(worktype='ansible-runner', node=node, signwork=True, **kwargs)
 
     unit_id = result['unitid']
     run_start = time.time()
@@ -279,10 +278,15 @@ class AWXReceptorJob:
         self.task = task
         self.runner_params = runner_params
         self.unit_id = None
+        self.sign_work = False
 
         if self.task and not self.task.instance.is_container_group_task:
             execution_environment_params = self.task.build_execution_environment_params(self.task.instance, runner_params['private_data_dir'])
             self.runner_params.update(execution_environment_params)
+
+        if self.task and self.task.instance.execution_node != settings.CLUSTER_HOST_ID:
+            self.runner_params['only_transmit_kwargs'] = False
+            self.sign_work = True
 
         if not settings.IS_K8S and self.work_type == 'local' and 'only_transmit_kwargs' not in self.runner_params:
             self.runner_params['only_transmit_kwargs'] = True
@@ -302,10 +306,6 @@ class AWXReceptorJob:
                     receptor_ctl.simple_command(f"work release {self.unit_id}")
                 except Exception:
                     logger.exception(f"Error releasing work unit {self.unit_id}.")
-
-    @property
-    def sign_work(self):
-        return False if settings.IS_K8S else True
 
     def _run_internal(self, receptor_ctl):
         # Create a socketpair. Where the left side will be used for writing our payload
@@ -601,8 +601,10 @@ class AWXReceptorJob:
 
 
 RECEPTOR_CONFIG_STARTER = (
-    {'control-service': {'service': 'control', 'filename': '/var/run/receptor/receptor.sock', 'permissions': '0600'}},
+    {'log-level': 'debug'},
+    {'control-service': {'service': 'control', 'filename': '/var/run/receptor/receptor.sock', 'permissions': '0660'}},
     {'work-command': {'worktype': 'local', 'command': 'ansible-runner', 'params': 'worker', 'allowruntimeparams': True}},
+    {'work-signing': {'privatekey': '/etc/receptor/signing/work-private-key.pem', 'tokenexpiration': '1m'}},
     {
         'work-kubernetes': {
             'worktype': 'kubernetes-runtime-auth',
