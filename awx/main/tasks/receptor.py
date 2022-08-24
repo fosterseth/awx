@@ -602,6 +602,7 @@ class AWXReceptorJob:
 
 RECEPTOR_CONFIG_STARTER = (
     {'log-level': 'debug'},
+    {'local-only': None},
     {'control-service': {'service': 'control', 'filename': '/var/run/receptor/receptor.sock', 'permissions': '0660'}},
     {'work-command': {'worktype': 'local', 'command': 'ansible-runner', 'params': 'worker', 'allowruntimeparams': True}},
     {'work-signing': {'privatekey': '/etc/receptor/signing/work-private-key.pem', 'tokenexpiration': '1m'}},
