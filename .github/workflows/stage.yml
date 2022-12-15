@@ -84,6 +84,16 @@ jobs:
             -e push=yes \
             -e awx_official=yes
 
+      - name: Log in to Quay
+        run: |
+          echo ${{ secrets.QUAY_TOKEN }} | docker login quay.io -u ${{ secrets.QUAY_USER }} --password-stdin
+
+      - name: tag awx-ee:latest with release tag
+        run: |
+          docker pull quay.io/ansible/awx-ee:latest
+          docker tag quay.io/ansible/awx-ee:latest quay.io/ansible/awx-ee:${{ github.event.release.tag_name }}
+          docker push quay.io/ansible/awx-ee:${{ github.event.release.tag_name }}
+
       - name: Build and stage awx-operator
         working-directory: awx-operator
         run: |
