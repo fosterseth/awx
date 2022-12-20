@@ -5,8 +5,7 @@ env:
   LC_ALL: "C.UTF-8" # prevent ERROR: Ansible could not initialize the preferred locale: unsupported locale setting
 
 on:
-  release:
-    types: [published]
+  workflow_dispatch
 
 jobs:
   promote:
