@@ -135,4 +135,4 @@ jobs:
           ansible-playbook tools/ansible/stage.yml \
             -e version=${{ github.event.inputs.operator_version }} \
             -e repo=${{ github.repository_owner }}/awx-operator \
-            -e github_token=${{ secrets.AWX_OPERATOR_RELEASE_TOKEN }}
+            -e github_token=${{ secrets.GITHUB_TOKEN }}
