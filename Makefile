@@ -248,7 +248,7 @@ receiver:
 	$(PYTHON) manage.py run_callback_receiver
 
 nginx:
-	nginx -g "daemon off;"
+	nginx -c /awx_devel/nginx.conf -g "daemon off;"
 
 jupyter:
 	@if [ "$(VENV_BASE)" ]; then \
