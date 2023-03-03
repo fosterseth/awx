@@ -876,7 +876,8 @@ class InventorySourceOptions(BaseModel):
         max_length=1024,
         default='',
         blank=True,
-        help_text=_('Inventory source SCM branch. Project default used if blank. Only allowed if project allow_override field is set to true.'),
+        null=True,
+        help_text=_('Branch to use for inventory source. Project default used if blank. Only allowed if project allow_override field is set to true.'),
     )
     enabled_var = models.TextField(
         blank=True,
