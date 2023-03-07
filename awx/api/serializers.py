@@ -4766,7 +4766,7 @@ class BulkJobLaunchSerializer(serializers.Serializer):
         # - If the orgs is not set, set it to the org of the launching user
         # - If the user is part of multiple orgs, throw a validation error saying user is part of multiple orgs, please provide one
         if not request.user.is_superuser:
-            read_org_qs = Organization.accessible_objects(request.user, 'read_role')
+            read_org_qs = Organization.accessible_objects(request.user, 'member_role')
             if 'organization' not in attrs or attrs['organization'] == None or attrs['organization'] == '':
                 read_org_ct = read_org_qs.count()
                 if read_org_ct == 1:
