@@ -4544,11 +4544,12 @@ class BulkJobNodeSerializer(WorkflowJobNodeSerializer):
     # many-to-many fields
     credentials = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False)
     labels = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False)
-    instance_groups = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False)
+    # TODO: Use instance group role added via PR 13584(once merged), for now everything related to instance group is commented
+    # instance_groups = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False)
 
     class Meta:
         model = WorkflowJobNode
-        fields = ('*', 'credentials', 'labels', 'instance_groups')  # m2m fields are not canonical for WJ nodes
+        fields = ('*', 'credentials', 'labels')  # m2m fields are not canonical for WJ nodes, TODO: add instance_groups once supported
 
     def validate(self, attrs):
         return super(LaunchConfigurationBaseSerializer, self).validate(attrs)
@@ -4608,21 +4609,21 @@ class BulkJobLaunchSerializer(serializers.Serializer):
         requested_use_execution_environments = {job['execution_environment'] for job in attrs['jobs'] if 'execution_environment' in job}
         requested_use_credentials = set()
         requested_use_labels = set()
-        requested_use_instance_groups = set()
+        # requested_use_instance_groups = set()
         for job in attrs['jobs']:
             for cred in job.get('credentials', []):
                 requested_use_credentials.add(cred)
             for label in job.get('labels', []):
                 requested_use_labels.add(label)
-            for instance_group in job.get('instance_groups', []):
-                requested_use_instance_groups.add(instance_group)
+            # for instance_group in job.get('instance_groups', []):
+            #     requested_use_instance_groups.add(instance_group)
 
         key_to_obj_map = {
             "unified_job_template": {obj.id: obj for obj in UnifiedJobTemplate.objects.filter(id__in=requested_ujts)},
             "inventory": {obj.id: obj for obj in Inventory.objects.filter(id__in=requested_use_inventories)},
             "credentials": {obj.id: obj for obj in Credential.objects.filter(id__in=requested_use_credentials)},
             "labels": {obj.id: obj for obj in Label.objects.filter(id__in=requested_use_labels)},
-            "instance_groups": {obj.id: obj for obj in InstanceGroup.objects.filter(id__in=requested_use_instance_groups)},
+            # "instance_groups": {obj.id: obj for obj in InstanceGroup.objects.filter(id__in=requested_use_instance_groups)},
             "execution_environment": {obj.id: obj for obj in ExecutionEnvironment.objects.filter(id__in=requested_use_execution_environments)},
         }
 
@@ -4649,7 +4650,7 @@ class BulkJobLaunchSerializer(serializers.Serializer):
 
         self.check_list_permission(Credential, requested_use_credentials, 'use_role')
         self.check_list_permission(Label, requested_use_labels)
-        self.check_list_permission(InstanceGroup, requested_use_instance_groups)  # TODO: change to use_role for conflict
+        # self.check_list_permission(InstanceGroup, requested_use_instance_groups)  # TODO: change to use_role for conflict
         self.check_list_permission(ExecutionEnvironment, requested_use_execution_environments)  # TODO: change if roles introduced
 
         jobs_object = self.get_objectified_jobs(attrs, key_to_obj_map)
@@ -4696,7 +4697,7 @@ class BulkJobLaunchSerializer(serializers.Serializer):
         node_m2m_object_types_to_through_model = {
             'credentials': WorkflowJobNode.credentials.through,
             'labels': WorkflowJobNode.labels.through,
-            'instance_groups': WorkflowJobNode.instance_groups.through,
+            # 'instance_groups': WorkflowJobNode.instance_groups.through,
         }
         node_deferred_attr_names = (
             'limit',
@@ -4749,9 +4750,9 @@ class BulkJobLaunchSerializer(serializers.Serializer):
                 if obj_type in node_m2m_objects[node_identifier] and obj_type == 'labels':
                     for label in node_m2m_objects[node_identifier][obj_type]:
                         through_models.append(obj_through_model(label=label, workflowjobnode=node_m2m_objects[node_identifier]['node']))
-                if obj_type in node_m2m_objects[node_identifier] and obj_type == 'instance_groups':
-                    for instance_group in node_m2m_objects[node_identifier][obj_type]:
-                        through_models.append(obj_through_model(instancegroup=instance_group, workflowjobnode=node_m2m_objects[node_identifier]['node']))
+                # if obj_type in node_m2m_objects[node_identifier] and obj_type == 'instance_groups':
+                #     for instance_group in node_m2m_objects[node_identifier][obj_type]:
+                #         through_models.append(obj_through_model(instancegroup=instance_group, workflowjobnode=node_m2m_objects[node_identifier]['node']))
             if through_models:
                 obj_through_model.objects.bulk_create(through_models)
 
