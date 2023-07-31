@@ -687,8 +687,7 @@ def should_update_config(instances):
             if key.endswith('-peer'):
                 current_peers.append(value['address'])
     intended_peers = [f"{i.hostname}:{i.listener_port}" for i in instances]
-    # TODO remove this logging line
-    logger.warning(f"current {current_peers} intended {intended_peers}")
+    logger.debug(f"Peers current {current_peers} intended {intended_peers}")
     if set(current_peers) == set(intended_peers):
         return False  # config file is already update to date
 
