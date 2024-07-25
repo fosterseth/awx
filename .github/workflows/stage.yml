@@ -117,7 +117,7 @@ jobs:
           echo "AWX_TEST_VERSION=new_ui" >> $GITHUB_ENV
           echo "AWX_TEST_IMAGE=quay.io/fosterseth/awx" >> $GITHUB_ENV
           echo "AWX_EE_TEST_IMAGE=quay.io/ansible/awx-ee:latest" >> $GITHUB_ENV
-          echo "AWX_OPERATOR_TEST_IMAGE=ghcr.io/ansible/awx-operator:devel" >> $GITHUB_ENV
+          echo "AWX_OPERATOR_TEST_IMAGE=quay.io/ansible/awx-operator:devel" >> $GITHUB_ENV
         env:
           OWNER: ${{ github.repository_owner }}
 
