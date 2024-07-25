@@ -114,10 +114,10 @@ jobs:
           echo "DEV_DOCKER_TAG_BASE=ghcr.io/${OWNER,,}" >> $GITHUB_ENV
           echo "COMPOSE_TAG=${{ github.event.inputs.version }}" >> $GITHUB_ENV
           echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
-          echo "AWX_TEST_VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
-          echo "AWX_TEST_IMAGE=ghcr.io/${OWNER,,}/awx" >> $GITHUB_ENV
+          echo "AWX_TEST_VERSION=new_ui" >> $GITHUB_ENV
+          echo "AWX_TEST_IMAGE=quay.io/fosterseth/awx" >> $GITHUB_ENV
           echo "AWX_EE_TEST_IMAGE=quay.io/ansible/awx-ee:latest" >> $GITHUB_ENV
-          echo "AWX_OPERATOR_TEST_IMAGE=ghcr.io/${OWNER,,}/awx-operator:${{ github.event.inputs.operator_version }}" >> $GITHUB_ENV
+          echo "AWX_OPERATOR_TEST_IMAGE=ghcr.io/ansible/awx-operator:devel" >> $GITHUB_ENV
         env:
           OWNER: ${{ github.repository_owner }}
 
@@ -136,13 +136,13 @@ jobs:
       #       quay.io/ansible/awx-ee:latest \
       #       --tag ${AWX_EE_TEST_IMAGE}
 
-      - name: Stage awx-operator image
-        working-directory: awx-operator
-        run: |
-          BUILD_ARGS="--build-arg DEFAULT_AWX_VERSION=${{ github.event.inputs.version}} \
-              --build-arg OPERATOR_VERSION=${{ github.event.inputs.operator_version }}" \
-          IMG=${AWX_OPERATOR_TEST_IMAGE} \
-          make docker-buildx
+      # - name: Stage awx-operator image
+      #   working-directory: awx-operator
+      #   run: |
+      #     BUILD_ARGS="--build-arg DEFAULT_AWX_VERSION=${{ github.event.inputs.version}} \
+      #         --build-arg OPERATOR_VERSION=${{ github.event.inputs.operator_version }}" \
+      #     IMG=${AWX_OPERATOR_TEST_IMAGE} \
+      #     make docker-buildx
 
       - name: Pulling images for test deployment with awx-operator
         # awx operator molecue test expect to kind load image and buildx exports image to registry and not local
