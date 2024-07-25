@@ -116,7 +116,7 @@ jobs:
           echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
           echo "AWX_TEST_VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
           echo "AWX_TEST_IMAGE=ghcr.io/${OWNER,,}/awx" >> $GITHUB_ENV
-          echo "AWX_EE_TEST_IMAGE=ghcr.io/${OWNER,,}/awx-ee:${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          echo "AWX_EE_TEST_IMAGE=quay.io/ansible/awx-ee:latest
           echo "AWX_OPERATOR_TEST_IMAGE=ghcr.io/${OWNER,,}/awx-operator:${{ github.event.inputs.operator_version }}" >> $GITHUB_ENV
         env:
           OWNER: ${{ github.repository_owner }}
@@ -130,11 +130,11 @@ jobs:
         run: |
           make awx-kube-buildx
 
-      - name: tag awx-ee:latest with version input
-        run: |
-          docker buildx imagetools create \
-            quay.io/ansible/awx-ee:latest \
-            --tag ${AWX_EE_TEST_IMAGE}
+      # - name: tag awx-ee:latest with version input
+      #   run: |
+      #     docker buildx imagetools create \
+      #       quay.io/ansible/awx-ee:latest \
+      #       --tag ${AWX_EE_TEST_IMAGE}
 
       - name: Stage awx-operator image
         working-directory: awx-operator
