@@ -105,7 +105,9 @@ def check_resource_server_for_user_in_organization(user, organization, requestin
         return False
     org_id_in_resource_server = response_json['results'][0]['object_id']
 
-    client.base_url = client.base_url.replace('/api/gateway/v1/service-index/', '/api/gateway/v1/')
+    client = get_resource_server_client(
+        settings.RESOURCE_SERVICE_PATH.replace('service-index', ''), jwt_user_id=str(requesting_user.resource.ansible_id), raise_if_bad_request=False
+    )
     # find role assignments with:
     # - roles Organization Member or Organization Admin
     # - user ansible id
