@@ -109,6 +109,7 @@ register(
     ),
     category=_('System'),
     category_slug='system',
+    hidden=True,
 )
 
 register(
