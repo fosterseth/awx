@@ -2,8 +2,8 @@ import sys
 import os
 
 from django.core.management.base import BaseCommand
-from awx.sso.utils.auth_migration import AuthConfigMigrator
-from awx.main.utils.auth_exporter import AuthConfigExporter
+from awx.sso.utils.github_migrator import GitHubMigrator
+from awx.sso.utils.oidc_migrator import OIDCMigrator
 from awx.main.utils.gateway_client import GatewayClient, GatewayAPIError
 
 
@@ -39,59 +39,59 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'Gateway Password: {"*" * len(gateway_password)}'))
         self.stdout.write(self.style.SUCCESS(f'Skip SSL Verification: {gateway_skip_verify}'))
 
-        # Initialize the auth config migrator
-        migrator = AuthConfigMigrator()
-
-        # Gather all authentication configurations
+        # Create Gateway client and run migrations
         try:
-            # Retrieve GitHub OIDC configuration
-            github_oidc_configs = migrator.get_github_oidc_config() if not skip_oidc else []
-
-            # Retrieve LDAP configuration
-            # ldap_configs = migrator.get_ldap_config() if not skip_ldap else []
-
-            # Create Gateway client and export configurations
             self.stdout.write(self.style.SUCCESS('\n=== Connecting to Gateway ==='))
 
-            try:
-                with GatewayClient(
-                    base_url=gateway_base_url, username=gateway_user, password=gateway_password, skip_verify=gateway_skip_verify
-                ) as gateway_client:
+            with GatewayClient(base_url=gateway_base_url, username=gateway_user, password=gateway_password, skip_verify=gateway_skip_verify) as gateway_client:
 
-                    self.stdout.write(self.style.SUCCESS('Successfully connected to Gateway'))
+                self.stdout.write(self.style.SUCCESS('Successfully connected to Gateway'))
 
-                    # Initialize the auth config exporter
-                    exporter = AuthConfigExporter(gateway_client, self)
+                # Initialize migrators
+                migrators = []
+                if not skip_oidc:
+                    migrators.append(GitHubMigrator(gateway_client, self))
+                    migrators.append(OIDCMigrator(gateway_client, self))
+                # if not skip_ldap:
+                #     migrators.append(LDAPMigrator(gateway_client, self))
 
-                    # Export GitHub configurations
-                    if github_oidc_configs:
-                        self.stdout.write(self.style.SUCCESS('\n=== Exporting GitHub Configurations ==='))
-                        github_result = exporter.export_configs(github_oidc_configs, 'github')
-                        self._print_export_summary('GitHub', github_result)
+                # Run migrations
+                total_results = {
+                    'created': 0,
+                    'failed': 0,
+                    'mappers_created': 0,
+                    'mappers_failed': 0,
+                }
 
-                    # Export LDAP configurations
-                    # if ldap_configs:
-                    #    self.stdout.write(self.style.SUCCESS('\n=== Exporting LDAP Configurations ==='))
-                    #    ldap_result = exporter.export_configs(ldap_configs, 'ldap')
-                    #    self._print_export_summary('LDAP', ldap_result)
+                if not migrators:
+                    self.stdout.write(self.style.WARNING('No authentication configurations found to migrate.'))
+                else:
+                    for migrator in migrators:
+                        self.stdout.write(self.style.SUCCESS(f'\n=== Migrating {migrator.get_authenticator_type()} Configurations ==='))
+                        result = migrator.migrate()
+                        self._print_export_summary(migrator.get_authenticator_type(), result)
+
+                        # Accumulate results
+                        for key in total_results:
+                            total_results[key] += result.get(key, 0)
 
                     # Overall summary
-                    if not github_oidc_configs:  # and not ldap_configs:
-                        self.stdout.write(self.style.WARNING('No authentication configurations found to migrate.'))
+                    self.stdout.write(self.style.SUCCESS('\n=== Migration Summary ==='))
+                    self.stdout.write(f'Total authenticators created: {total_results["created"]}')
+                    self.stdout.write(f'Total authenticators failed: {total_results["failed"]}')
+                    self.stdout.write(f'Total mappers created: {total_results["mappers_created"]}')
+                    self.stdout.write(f'Total mappers failed: {total_results["mappers_failed"]}')
 
-            except GatewayAPIError as e:
-                self.stdout.write(self.style.ERROR(f'Gateway API Error: {e.message}'))
-                if e.status_code:
-                    self.stdout.write(self.style.ERROR(f'Status Code: {e.status_code}'))
-                if e.response_data:
-                    self.stdout.write(self.style.ERROR(f'Response: {e.response_data}'))
-                return
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f'Unexpected error connecting to Gateway: {str(e)}'))
-                return
-
+        except GatewayAPIError as e:
+            self.stdout.write(self.style.ERROR(f'Gateway API Error: {e.message}'))
+            if e.status_code:
+                self.stdout.write(self.style.ERROR(f'Status Code: {e.status_code}'))
+            if e.response_data:
+                self.stdout.write(self.style.ERROR(f'Response: {e.response_data}'))
+            return
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f'Error retrieving authentication configs: {str(e)}'))
+            self.stdout.write(self.style.ERROR(f'Unexpected error during migration: {str(e)}'))
+            return
 
     def _print_export_summary(self, config_type, result):
         """Print a summary of the export results."""
