@@ -170,6 +170,41 @@ class GatewayClient:
         except requests.RequestException as e:
             raise GatewayAPIError(f"Failed to create authenticator: {str(e)}")
 
+    def update_authenticator(self, authenticator_id: int, authenticator_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Update an existing authenticator in Gateway.
+
+        Args:
+            authenticator_id: ID of the authenticator to update
+            authenticator_config: Authenticator configuration dictionary
+
+        Returns:
+            dict: Updated authenticator data
+
+        Raises:
+            GatewayAPIError: If update fails
+        """
+        endpoint = f'/api/gateway/v1/authenticators/{authenticator_id}/'
+
+        try:
+            response = self._make_request('PATCH', endpoint, data=authenticator_config)
+
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"Successfully updated authenticator: {result.get('name', 'Unknown')}")
+                return result
+            else:
+                error_msg = f"Failed to update authenticator. Status: {response.status_code}"
+                try:
+                    error_data = response.json()
+                    error_msg += f", Error: {error_data}"
+                except requests.exceptions.JSONDecodeError:
+                    error_msg += f", Response: {response.text}"
+
+                raise GatewayAPIError(error_msg, response.status_code, response.json() if response.content else None)
+
+        except requests.RequestException as e:
+            raise GatewayAPIError(f"Failed to update authenticator: {str(e)}")
+
     def create_authenticator_map(self, authenticator_id: int, mapper_config: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new authenticator map in Gateway.
 
@@ -206,6 +241,41 @@ class GatewayClient:
         except requests.RequestException as e:
             raise GatewayAPIError(f"Failed to create authenticator map: {str(e)}")
 
+    def update_authenticator_map(self, mapper_id: int, mapper_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Update an existing authenticator map in Gateway.
+
+        Args:
+            mapper_id: ID of the authenticator map to update
+            mapper_config: Mapper configuration dictionary
+
+        Returns:
+            dict: Updated mapper data
+
+        Raises:
+            GatewayAPIError: If update fails
+        """
+        endpoint = f'/api/gateway/v1/authenticator_maps/{mapper_id}/'
+
+        try:
+            response = self._make_request('PATCH', endpoint, data=mapper_config)
+
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"Successfully updated authenticator map: {result.get('name', 'Unknown')}")
+                return result
+            else:
+                error_msg = f"Failed to update authenticator map. Status: {response.status_code}"
+                try:
+                    error_data = response.json()
+                    error_msg += f", Error: {error_data}"
+                except requests.exceptions.JSONDecodeError:
+                    error_msg += f", Response: {response.text}"
+
+                raise GatewayAPIError(error_msg, response.status_code, response.json() if response.content else None)
+
+        except requests.RequestException as e:
+            raise GatewayAPIError(f"Failed to update authenticator map: {str(e)}")
+
     def get_authenticators(self, params: Optional[Dict] = None) -> List[Dict[str, Any]]:
         """Get list of authenticators from Gateway.
 
@@ -236,6 +306,33 @@ class GatewayClient:
         except requests.RequestException as e:
             raise GatewayAPIError(f"Failed to get authenticators: {str(e)}")
 
+    def get_authenticator_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
+        """Get a specific authenticator by slug.
+
+        Args:
+            slug: The authenticator slug to search for
+
+        Returns:
+            dict: The authenticator data if found, None otherwise
+
+        Raises:
+            GatewayAPIError: If request fails
+        """
+        try:
+            # Use query parameter to filter by slug - more efficient than getting all
+            authenticators = self.get_authenticators(params={'slug': slug})
+
+            # Return the first match (slugs should be unique)
+            if authenticators:
+                return authenticators[0]
+            return None
+
+        except GatewayAPIError as e:
+            # Re-raise Gateway API errors
+            raise e
+        except Exception as e:
+            raise GatewayAPIError(f"Failed to get authenticator by slug: {str(e)}")
+
     def get_authenticator_maps(self, authenticator_id: int) -> List[Dict[str, Any]]:
         """Get list of maps for a specific authenticator.
 
@@ -248,7 +345,7 @@ class GatewayClient:
         Raises:
             GatewayAPIError: If request fails
         """
-        endpoint = f'/api/gateway/v1/authenticators/{authenticator_id}/maps/'
+        endpoint = f'/api/gateway/v1/authenticators/{authenticator_id}/authenticator_maps/'
 
         try:
             response = self._make_request('GET', endpoint)

@@ -60,6 +60,7 @@ class Command(BaseCommand):
                     'created': 0,
                     'failed': 0,
                     'mappers_created': 0,
+                    'mappers_updated': 0,
                     'mappers_failed': 0,
                 }
 
@@ -71,7 +72,7 @@ class Command(BaseCommand):
                         result = migrator.migrate()
                         self._print_export_summary(migrator.get_authenticator_type(), result)
 
-                        # Accumulate results
+                        # Accumulate results - handle missing keys gracefully
                         for key in total_results:
                             total_results[key] += result.get(key, 0)
 
@@ -80,6 +81,7 @@ class Command(BaseCommand):
                     self.stdout.write(f'Total authenticators created: {total_results["created"]}')
                     self.stdout.write(f'Total authenticators failed: {total_results["failed"]}')
                     self.stdout.write(f'Total mappers created: {total_results["mappers_created"]}')
+                    self.stdout.write(f'Total mappers updated: {total_results["mappers_updated"]}')
                     self.stdout.write(f'Total mappers failed: {total_results["mappers_failed"]}')
 
         except GatewayAPIError as e:
@@ -96,7 +98,8 @@ class Command(BaseCommand):
     def _print_export_summary(self, config_type, result):
         """Print a summary of the export results."""
         self.stdout.write(f'\n--- {config_type} Export Summary ---')
-        self.stdout.write(f'Authenticators created: {result["created"]}')
-        self.stdout.write(f'Authenticators failed: {result["failed"]}')
-        self.stdout.write(f'Mappers created: {result["mappers_created"]}')
-        self.stdout.write(f'Mappers failed: {result["mappers_failed"]}')
+        self.stdout.write(f'Authenticators created: {result.get("created", 0)}')
+        self.stdout.write(f'Authenticators failed: {result.get("failed", 0)}')
+        self.stdout.write(f'Mappers created: {result.get("mappers_created", 0)}')
+        self.stdout.write(f'Mappers updated: {result.get("mappers_updated", 0)}')
+        self.stdout.write(f'Mappers failed: {result.get("mappers_failed", 0)}')

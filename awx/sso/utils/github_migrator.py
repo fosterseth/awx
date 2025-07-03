@@ -7,7 +7,6 @@ This module handles the migration of GitHub authenticators from AWX to Gateway.
 from django.conf import settings
 from awx.conf import settings_registry
 from awx.main.utils.gateway_mapping import org_map_to_gateway_format, team_map_to_gateway_format
-from awx.main.utils.gateway_client import GatewayAPIError
 from awx.sso.utils.base_migrator import BaseAuthenticatorMigrator
 import re
 
@@ -140,62 +139,29 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
         self._write_output(f'Client ID: {key_value}')
         self._write_output(f'Client Secret: {"*" * 8}')
 
-        try:
-            # Check if authenticator already exists by slug
-            existing_authenticators = self.gateway_client.get_authenticators()
-            existing_authenticator = None
+        # Build Gateway authenticator configuration
+        gateway_config = {
+            "name": authenticator_name,
+            "slug": authenticator_slug,
+            "type": authenticator_type,
+            "enabled": True,
+            "create_objects": True,  # Allow Gateway to create users/orgs/teams
+            "remove_users": False,  # Don't remove users by default
+            "configuration": {"KEY": key_value, "SECRET": secret_value},
+        }
 
-            for auth in existing_authenticators:
-                if auth.get('slug') == authenticator_slug:
-                    existing_authenticator = auth
-                    break
+        # Add any additional configuration based on AWX settings
+        additional_config = self._build_additional_config(category, settings)
+        gateway_config["configuration"].update(additional_config)
 
-            if existing_authenticator:
-                # Authenticator already exists, use it
-                authenticator_id = existing_authenticator.get('id')
-                self._write_output(f'⚠ Authenticator already exists with ID: {authenticator_id}', 'warning')
+        # GitHub authenticators have auto-generated fields that should be ignored during comparison
+        # CALLBACK_URL - automatically created by Gateway
+        # SCOPE - relevant for mappers with team/org requirement, allows to read the org or team
+        # SECRET - the secret is encrypted in Gateway, we have no way of comparing the decrypted value
+        ignore_keys = ['CALLBACK_URL', 'SCOPE', 'SECRET']
 
-                # Store the existing result for mapper creation
-                config['gateway_authenticator_id'] = authenticator_id
-                config['gateway_authenticator'] = existing_authenticator
-                return True
-            else:
-                # Authenticator doesn't exist, create it
-                self._write_output('Creating new authenticator...')
-
-                # Build Gateway authenticator configuration
-                gateway_config = {
-                    "name": authenticator_name,
-                    "slug": authenticator_slug,
-                    "type": authenticator_type,
-                    "enabled": True,
-                    "create_objects": True,  # Allow Gateway to create users/orgs/teams
-                    "remove_users": False,  # Don't remove users by default
-                    "configuration": {"KEY": key_value, "SECRET": secret_value},
-                }
-
-                # Add any additional configuration based on AWX settings
-                additional_config = self._build_additional_config(category, settings)
-                gateway_config["configuration"].update(additional_config)
-
-                # Create the authenticator
-                result = self.gateway_client.create_authenticator(gateway_config)
-
-                self._write_output(f'✓ Successfully created authenticator with ID: {result.get("id")}', 'success')
-
-                # Store the result for potential mapper creation later
-                config['gateway_authenticator_id'] = result.get('id')
-                config['gateway_authenticator'] = result
-                return True
-
-        except GatewayAPIError as e:
-            self._write_output(f'✗ Failed to create {category} authenticator: {e.message}', 'error')
-            if e.response_data:
-                self._write_output(f'  Details: {e.response_data}', 'error')
-            return False
-        except Exception as e:
-            self._write_output(f'✗ Unexpected error creating {category} authenticator: {str(e)}', 'error')
-            return False
+        # Submit the authenticator (create or update as needed)
+        return self.submit_authenticator(gateway_config, ignore_keys, config)
 
     def _build_additional_config(self, category, settings):
         """Build additional configuration for specific authenticator types."""
@@ -210,10 +176,10 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
         # Add GitHub Enterprise URL if present
         if 'enterprise' in category:
             for setting_name, value in settings.items():
-                if setting_name.endswith('_URL') and value:
-                    additional_config['URL'] = value
-                elif setting_name.endswith('_API_URL') and value:
+                if setting_name.endswith('_API_URL') and value:
                     additional_config['API_URL'] = value
+                elif setting_name.endswith('_URL') and value:
+                    additional_config['URL'] = value
 
         # Add organization name for org-specific authenticators
         if 'org' in category:
