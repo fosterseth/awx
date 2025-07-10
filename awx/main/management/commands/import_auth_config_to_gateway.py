@@ -4,6 +4,7 @@ import os
 from django.core.management.base import BaseCommand
 from awx.sso.utils.github_migrator import GitHubMigrator
 from awx.sso.utils.oidc_migrator import OIDCMigrator
+from awx.sso.utils.saml_migrator import SAMLMigrator
 from awx.main.utils.gateway_client import GatewayClient, GatewayAPIError
 
 
@@ -52,6 +53,7 @@ class Command(BaseCommand):
                 if not skip_oidc:
                     migrators.append(GitHubMigrator(gateway_client, self))
                     migrators.append(OIDCMigrator(gateway_client, self))
+                    migrators.append(SAMLMigrator(gateway_client, self))
                 # if not skip_ldap:
                 #     migrators.append(LDAPMigrator(gateway_client, self))
 
