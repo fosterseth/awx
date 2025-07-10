@@ -167,11 +167,14 @@ def test_adding_user_to_org_member_role(setup_managed_roles, organization, admin
 @pytest.mark.parametrize('role_name', ['Organization Admin', 'Organization Member', 'Team Admin', 'Team Member'])
 def test_adding_actor_to_platform_roles(setup_managed_roles, role_name, actor, organization, team, admin, bob, post):
     '''
-    Allow user or team to be added to platform-level roles
+    Allow user to be added to platform-level roles
     Exceptions:
     - Team cannot be added to Organization Member or Admin role
+    - Team cannot be added to Team Admin or Team Member role
     '''
     if actor == 'team' and 'Organization' in role_name:
+        expect = 400
+    elif actor == 'team' and 'Team' in role_name:
         expect = 400
     else:
         expect = 201
@@ -183,5 +186,7 @@ def test_adding_actor_to_platform_roles(setup_managed_roles, role_name, actor, o
     actor_id = bob.id if actor == 'user' else team.id
     data[actor] = actor_id
     r = post(url, data=data, user=admin, expect=expect)
-    if expect == 400:
+    if 'Organization' in role_name:
         assert 'Assigning organization member permission to teams is not allowed' in str(r.data)
+    if 'Team' in role_name:
+        assert 'Assigning team permissions to other teams is not allowed' in str(r.data)
