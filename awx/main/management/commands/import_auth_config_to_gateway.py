@@ -2,6 +2,7 @@ import sys
 import os
 
 from django.core.management.base import BaseCommand
+from awx.sso.utils.azure_ad_migrator import AzureADMigrator
 from awx.sso.utils.github_migrator import GitHubMigrator
 from awx.sso.utils.oidc_migrator import OIDCMigrator
 from awx.sso.utils.saml_migrator import SAMLMigrator
@@ -14,6 +15,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--skip-oidc', action='store_true', help='Skip importing GitHub and generic OIDC authenticators')
         parser.add_argument('--skip-ldap', action='store_true', help='Skip importing LDAP authenticators')
+        parser.add_argument('--skip-ad', action='store_true', help='Skip importing Azure AD authenticator')
 
     def handle(self, *args, **options):
         # Read Gateway connection parameters from environment variables
@@ -24,6 +26,7 @@ class Command(BaseCommand):
 
         skip_oidc = options['skip_oidc']
         # skip_ldap = options['skip_ldap']
+        skip_ad = options['skip_ad']
 
         # If the management command isn't called with all parameters needed to talk to Gateway, consider
         # it a dry-run and exit cleanly
@@ -56,6 +59,8 @@ class Command(BaseCommand):
                     migrators.append(SAMLMigrator(gateway_client, self))
                 # if not skip_ldap:
                 #     migrators.append(LDAPMigrator(gateway_client, self))
+                if not skip_ad:
+                    migrators.append(AzureADMigrator(gateway_client, self))
 
                 # Run migrations
                 total_results = {
