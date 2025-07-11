@@ -4,6 +4,7 @@ import os
 from django.core.management.base import BaseCommand
 from awx.sso.utils.azure_ad_migrator import AzureADMigrator
 from awx.sso.utils.github_migrator import GitHubMigrator
+from awx.sso.utils.ldap_migrator import LDAPMigrator
 from awx.sso.utils.oidc_migrator import OIDCMigrator
 from awx.sso.utils.saml_migrator import SAMLMigrator
 from awx.main.utils.gateway_client import GatewayClient, GatewayAPIError
@@ -16,6 +17,7 @@ class Command(BaseCommand):
         parser.add_argument('--skip-oidc', action='store_true', help='Skip importing GitHub and generic OIDC authenticators')
         parser.add_argument('--skip-ldap', action='store_true', help='Skip importing LDAP authenticators')
         parser.add_argument('--skip-ad', action='store_true', help='Skip importing Azure AD authenticator')
+        parser.add_argument('--skip-saml', action='store_true', help='Skip importing SAML authenticator')
 
     def handle(self, *args, **options):
         # Read Gateway connection parameters from environment variables
@@ -25,8 +27,9 @@ class Command(BaseCommand):
         gateway_skip_verify = os.getenv('GATEWAY_SKIP_VERIFY', '').lower() in ('true', '1', 'yes', 'on')
 
         skip_oidc = options['skip_oidc']
-        # skip_ldap = options['skip_ldap']
+        skip_ldap = options['skip_ldap']
         skip_ad = options['skip_ad']
+        skip_saml = options['skip_saml']
 
         # If the management command isn't called with all parameters needed to talk to Gateway, consider
         # it a dry-run and exit cleanly
@@ -56,11 +59,15 @@ class Command(BaseCommand):
                 if not skip_oidc:
                     migrators.append(GitHubMigrator(gateway_client, self))
                     migrators.append(OIDCMigrator(gateway_client, self))
+
+                if not skip_saml:
                     migrators.append(SAMLMigrator(gateway_client, self))
-                # if not skip_ldap:
-                #     migrators.append(LDAPMigrator(gateway_client, self))
+
                 if not skip_ad:
                     migrators.append(AzureADMigrator(gateway_client, self))
+
+                if not skip_ldap:
+                    migrators.append(LDAPMigrator(gateway_client, self))
 
                 # Run migrations
                 total_results = {
