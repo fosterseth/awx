@@ -4,6 +4,8 @@ Azure AD authenticator migrator.
 This module handles the migration of Azure AD authenticators from AWX to Gateway.
 """
 
+from django.conf import settings
+from awx.main.utils.gateway_mapping import org_map_to_gateway_format, team_map_to_gateway_format
 from awx.sso.utils.base_migrator import BaseAuthenticatorMigrator
 
 
@@ -24,27 +26,63 @@ class AzureADMigrator(BaseAuthenticatorMigrator):
         Returns:
             list: List of configured Azure AD authentication providers with their settings
         """
-        # TODO: Implement Azure AD configuration retrieval
-        # Azure AD settings typically include:
-        # - SOCIAL_AUTH_AZUREAD_OAUTH2_KEY
-        # - SOCIAL_AUTH_AZUREAD_OAUTH2_SECRET
-        # - SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_KEY
-        # - SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_SECRET
-        # - SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_TENANT_ID
-        # - SOCIAL_AUTH_AZUREAD_OAUTH2_ORGANIZATION_MAP
-        # - SOCIAL_AUTH_AZUREAD_OAUTH2_TEAM_MAP
-        found_configs = []
-        return found_configs
+        key_value = getattr(settings, 'SOCIAL_AUTH_AZUREAD_OAUTH2_KEY', None)
+        secret_value = getattr(settings, 'SOCIAL_AUTH_AZUREAD_OAUTH2_SECRET', None)
+
+        # Skip this category if OIDC Key and/or Secret are not configured
+        if not key_value or not secret_value:
+            return []
+
+        # If we have both key and secret, collect all settings
+        org_map_value = getattr(settings, 'SOCIAL_AUTH_AZUREAD_OAUTH2_ORGANIZATION_MAP', None)
+        team_map_value = getattr(settings, 'SOCIAL_AUTH_AZUREAD_OAUTH2_TEAM_MAP', None)
+
+        # Convert GitHub org and team mappings from AWX to the Gateway format
+        # Start with order 1 and maintain sequence across both org and team mappers
+        org_mappers, next_order = org_map_to_gateway_format(org_map_value, start_order=1)
+        team_mappers, _ = team_map_to_gateway_format(team_map_value, start_order=next_order)
+
+        category = 'AzureAD'
+
+        # Generate authenticator name and slug
+        authenticator_name = "Controller Azure AD"
+        authenticator_slug = self._generate_authenticator_slug("azure_ad", category, key_value)
+
+        return [
+            {
+                'category': category,
+                'settings': {
+                    "name": authenticator_name,
+                    "slug": authenticator_slug,
+                    "type": "ansible_base.authentication.authenticator_plugins.azuread",
+                    "enabled": False,
+                    "create_objects": True,
+                    "remove_users": False,
+                    "configuration": {
+                        "KEY": key_value,
+                        "SECRET": secret_value,
+                    },
+                },
+                'org_mappers': org_mappers,
+                'team_mappers': team_mappers,
+            }
+        ]
 
     def create_gateway_authenticator(self, config):
         """Create an Azure AD authenticator in Gateway."""
-        # TODO: Implement Azure AD authenticator creation
-        # When implementing, use this pattern for slug generation:
-        # client_id = settings.get('SOCIAL_AUTH_AZUREAD_OAUTH2_KEY', 'azure')
-        # authenticator_slug = self._generate_authenticator_slug('azure_ad', category, client_id)
-        # Azure AD requires:
-        # - Application ID and secret
-        # - Tenant ID (for tenant-specific auth)
-        # - Proper OAuth2 endpoints for Azure
-        self._write_output('Azure AD authenticator creation not yet implemented', 'warning')
-        return False
+
+        category = config["category"]
+        gateway_config = config["settings"]
+
+        self._write_output(f"\n--- Processing {category} authenticator ---")
+        self._write_output(f"Name: {gateway_config['name']}")
+        self._write_output(f"Slug: {gateway_config['slug']}")
+        self._write_output(f"Type: {gateway_config['type']}")
+
+        # CALLBACK_URL - automatically created by Gateway
+        # GROUPS_CLAIM - Not an AWX feature
+        # ADDITIONAL_UNVERIFIED_ARGS - Not an AWX feature
+        ignore_keys = ["CALLBACK_URL", "GROUPS_CLAIM"]
+
+        # Submit the authenticator (create or update as needed)
+        return self.submit_authenticator(gateway_config, ignore_keys, config)
