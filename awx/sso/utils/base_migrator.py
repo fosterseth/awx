@@ -5,8 +5,6 @@ This module defines the contract that all specific authenticator migrators must 
 """
 
 from awx.main.utils.gateway_client import GatewayAPIError
-import re
-import hashlib
 
 
 class BaseAuthenticatorMigrator:
@@ -98,15 +96,9 @@ class BaseAuthenticatorMigrator:
         """
         raise NotImplementedError("Subclasses must implement get_authenticator_type()")
 
-    def _generate_authenticator_slug(self, auth_type, category, identifier):
+    def _generate_authenticator_slug(self, auth_type, category):
         """Generate a deterministic slug for an authenticator."""
-        base_string = f"awx-{auth_type}-{category}-{identifier}"
-        cleaned = re.sub(r'[^a-zA-Z0-9]+', '-', base_string.lower())
-        cleaned = re.sub(r'^-+|-+$', '', cleaned)
-        cleaned = re.sub(r'-+', '-', cleaned)
-        slug_hash = hashlib.md5(cleaned.encode('utf-8')).hexdigest()[:8]
-        final_slug = f"awx-{auth_type}-{slug_hash}"
-        return final_slug
+        return f"aap-{auth_type}-{category}"
 
     def submit_authenticator(self, gateway_config, ignore_keys=[], config={}):
         """
@@ -273,7 +265,7 @@ class BaseAuthenticatorMigrator:
 
             # Try to find a matching existing mapper
             for existing_mapper in existing_mappers:
-                if self._mappers_match_structurally(existing_mapper, new_mapper, ignore_keys):
+                if self._mappers_match_structurally(existing_mapper, new_mapper):
                     matched_existing = existing_mapper
                     break
 
@@ -288,7 +280,7 @@ class BaseAuthenticatorMigrator:
 
         return mappers_to_update, mappers_to_create
 
-    def _mappers_match_structurally(self, existing_mapper, new_mapper, ignore_keys=None):
+    def _mappers_match_structurally(self, existing_mapper, new_mapper):
         """
         Check if two mappers match structurally (same organization, team, map_type, role).
         This identifies if they represent the same logical mapping.
@@ -296,16 +288,13 @@ class BaseAuthenticatorMigrator:
         Args:
             existing_mapper: Existing mapper configuration from Gateway
             new_mapper: New mapper configuration
-            ignore_keys: List of keys to ignore during comparison
 
         Returns:
             bool: True if mappers represent the same logical mapping
         """
-        if ignore_keys is None:
-            ignore_keys = []
 
         # Compare key structural fields that identify the same logical mapper
-        structural_fields = ['organization', 'team', 'map_type', 'role']
+        structural_fields = ['name']
 
         for field in structural_fields:
             if existing_mapper.get(field) != new_mapper.get(field):
@@ -357,7 +346,9 @@ class BaseAuthenticatorMigrator:
         category = config['category']
         org_mappers = config.get('org_mappers', [])
         team_mappers = config.get('team_mappers', [])
-        all_new_mappers = org_mappers + team_mappers
+        role_mappers = config.get('role_mappers', [])
+        allow_mappers = config.get('allow_mappers', [])
+        all_new_mappers = org_mappers + team_mappers + role_mappers + allow_mappers
 
         if len(all_new_mappers) == 0:
             self._write_output(f'No mappers to process for {category} authenticator')
@@ -366,6 +357,8 @@ class BaseAuthenticatorMigrator:
         self._write_output(f'\n--- Processing mappers for {category} authenticator (ID: {authenticator_id}) ---')
         self._write_output(f'Organization mappers: {len(org_mappers)}')
         self._write_output(f'Team mappers: {len(team_mappers)}')
+        self._write_output(f'Role mappers: {len(role_mappers)}')
+        self._write_output(f'Allow mappers: {len(allow_mappers)}')
 
         # Get existing mappers from Gateway
         try:
@@ -379,6 +372,9 @@ class BaseAuthenticatorMigrator:
 
         # Compare existing vs new mappers
         mappers_to_update, mappers_to_create = self._compare_mapper_lists(existing_mappers, all_new_mappers, ignore_keys)
+
+        self._write_output(f'Mappers to create: {len(mappers_to_create)}')
+        self._write_output(f'Mappers to update: {len(mappers_to_update)}')
 
         created_count = 0
         updated_count = 0

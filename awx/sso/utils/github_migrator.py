@@ -114,8 +114,8 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
             return False
 
         # Generate authenticator name and slug
-        authenticator_name = f"AWX-{category.replace('-', '_').title()}"
-        authenticator_slug = self._generate_authenticator_slug('github', category, key_value)
+        authenticator_name = category
+        authenticator_slug = self._generate_authenticator_slug('github', category)
 
         # Map AWX category to Gateway authenticator type
         type_mapping = {

@@ -3,7 +3,7 @@ Unit tests for auth migration utilities.
 """
 
 import pytest
-from awx.main.utils.gateway_mapping import org_map_to_gateway_format, team_map_to_gateway_format
+from awx.main.utils.gateway_mapping import org_map_to_gateway_format, team_map_to_gateway_format, role_map_to_gateway_format
 
 
 def get_org_mappers(org_map, start_order=1):
@@ -15,6 +15,12 @@ def get_org_mappers(org_map, start_order=1):
 def get_team_mappers(team_map, start_order=1):
     """Helper function to get just the mappers from team_map_to_gateway_format."""
     result, _ = team_map_to_gateway_format(team_map, start_order)
+    return result
+
+
+def get_role_mappers(role_map, start_order=1):
+    """Helper function to get just the mappers from role_map_to_gateway_format."""
+    result, _ = role_map_to_gateway_format(role_map, start_order)
     return result
 
 
