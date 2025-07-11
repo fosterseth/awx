@@ -14,6 +14,7 @@ def consolidate_indirect_user_roles(apps, schema_editor):
     """
 
     # get object roles for membership on teams
+    RoleUserAssignment = apps.get_model('dab_rbac', 'RoleUserAssignment')
     ObjectRole = apps.get_model('dab_rbac', 'ObjectRole')
     Team = apps.get_model('main', 'Team')
 
@@ -44,7 +45,7 @@ def consolidate_indirect_user_roles(apps, schema_editor):
 
             # add child team users to all of the discovered parent team object roles
             for team in incl_teams:
-                team_users = team_member_object_roles.get(object_id=team.id).users.all()
+                team_users = list(RoleUserAssignment.objects.filter(object_id=team.id).values_list('user', flat=True))
 
                 # mirror changes to Role model
                 for parent_id in all_parents:
