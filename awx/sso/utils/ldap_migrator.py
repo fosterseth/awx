@@ -165,7 +165,7 @@ class LDAPMigrator(BaseAuthenticatorMigrator):
 
         # LDAP authenticators have auto-generated fields that should be ignored during comparison
         # BIND_PASSWORD - encrypted value, can't be compared
-        ignore_keys = ['BIND_PASSWORD']
+        ignore_keys = []
 
         # Submit the authenticator using the base class method
         return self.submit_authenticator(gateway_config, config=config, ignore_keys=ignore_keys)

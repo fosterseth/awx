@@ -18,6 +18,7 @@ class Command(BaseCommand):
         parser.add_argument('--skip-ldap', action='store_true', help='Skip importing LDAP authenticators')
         parser.add_argument('--skip-ad', action='store_true', help='Skip importing Azure AD authenticator')
         parser.add_argument('--skip-saml', action='store_true', help='Skip importing SAML authenticator')
+        parser.add_argument('--force', action='store_true', help='Force migration even if configurations already exist')
 
     def handle(self, *args, **options):
         # Read Gateway connection parameters from environment variables
@@ -30,6 +31,7 @@ class Command(BaseCommand):
         skip_ldap = options['skip_ldap']
         skip_ad = options['skip_ad']
         skip_saml = options['skip_saml']
+        force = options['force']
 
         # If the management command isn't called with all parameters needed to talk to Gateway, consider
         # it a dry-run and exit cleanly
@@ -57,21 +59,23 @@ class Command(BaseCommand):
                 # Initialize migrators
                 migrators = []
                 if not skip_oidc:
-                    migrators.append(GitHubMigrator(gateway_client, self))
-                    migrators.append(OIDCMigrator(gateway_client, self))
+                    migrators.append(GitHubMigrator(gateway_client, self, force=force))
+                    migrators.append(OIDCMigrator(gateway_client, self, force=force))
 
                 if not skip_saml:
-                    migrators.append(SAMLMigrator(gateway_client, self))
+                    migrators.append(SAMLMigrator(gateway_client, self, force=force))
 
                 if not skip_ad:
-                    migrators.append(AzureADMigrator(gateway_client, self))
+                    migrators.append(AzureADMigrator(gateway_client, self, force=force))
 
                 if not skip_ldap:
-                    migrators.append(LDAPMigrator(gateway_client, self))
+                    migrators.append(LDAPMigrator(gateway_client, self, force=force))
 
                 # Run migrations
                 total_results = {
                     'created': 0,
+                    'updated': 0,
+                    'unchanged': 0,
                     'failed': 0,
                     'mappers_created': 0,
                     'mappers_updated': 0,
@@ -93,6 +97,8 @@ class Command(BaseCommand):
                     # Overall summary
                     self.stdout.write(self.style.SUCCESS('\n=== Migration Summary ==='))
                     self.stdout.write(f'Total authenticators created: {total_results["created"]}')
+                    self.stdout.write(f'Total authenticators updated: {total_results["updated"]}')
+                    self.stdout.write(f'Total authenticators unchanged: {total_results["unchanged"]}')
                     self.stdout.write(f'Total authenticators failed: {total_results["failed"]}')
                     self.stdout.write(f'Total mappers created: {total_results["mappers_created"]}')
                     self.stdout.write(f'Total mappers updated: {total_results["mappers_updated"]}')
@@ -113,6 +119,8 @@ class Command(BaseCommand):
         """Print a summary of the export results."""
         self.stdout.write(f'\n--- {config_type} Export Summary ---')
         self.stdout.write(f'Authenticators created: {result.get("created", 0)}')
+        self.stdout.write(f'Authenticators updated: {result.get("updated", 0)}')
+        self.stdout.write(f'Authenticators unchanged: {result.get("unchanged", 0)}')
         self.stdout.write(f'Authenticators failed: {result.get("failed", 0)}')
         self.stdout.write(f'Mappers created: {result.get("mappers_created", 0)}')
         self.stdout.write(f'Mappers updated: {result.get("mappers_updated", 0)}')
