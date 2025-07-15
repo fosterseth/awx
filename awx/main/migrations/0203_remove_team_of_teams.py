@@ -1,6 +1,9 @@
 import logging
+from collections import defaultdict
 
 from django.db import migrations
+
+from ansible_base.rbac.migrations._utils import give_permissions
 
 logger = logging.getLogger('awx.main.migrations')
 
@@ -13,71 +16,102 @@ def consolidate_indirect_user_roles(apps, schema_editor):
     Team A and Team B.
     """
 
-    # get object roles for membership on teams
+    # get models for membership on teams
+    RoleDefinition = apps.get_model('dab_rbac', 'RoleDefinition')
     RoleUserAssignment = apps.get_model('dab_rbac', 'RoleUserAssignment')
-    ObjectRole = apps.get_model('dab_rbac', 'ObjectRole')
+    RoleTeamAssignment = apps.get_model('dab_rbac', 'RoleTeamAssignment')
     Team = apps.get_model('main', 'Team')
 
-    team_member_object_roles = ObjectRole.objects.filter(content_type__model='team').filter(role_definition__name='Team Member')
+    team_member_role = RoleDefinition.objects.get(name='Team Member')
 
-    # for team member object role, check if teams are assigned
-    for obj_role in team_member_object_roles:
-        obj_role_team_id = obj_role.object_id
-        incl_teams = obj_role.teams.all()
-        if incl_teams:
-            # search for all indirect parents of this team
-            all_parents = {obj_role_team_id}
-            working_parents_set = {obj_role_team_id}
-            check_parents = True
+    def get_team_to_team_relationships():
+        """
+        Find all team-to-team relationships where one team is a member of another.
+        Returns a dict mapping parent_team_id -> [child_team_id, ...]
+        """
+        team_to_team_relationships = defaultdict(list)
 
-            while check_parents == True:
-                new_parents = set()
-                for parent_id in working_parents_set:
-                    parent_team_roles = list(team_member_object_roles.filter(teams__id=parent_id).values_list('object_id', flat=True))
-                    if parent_team_roles:
-                        new_parents.update(parent_team_roles)
-                if not new_parents:
-                    check_parents = False
-                else:
-                    all_parents.update(new_parents)
-                    working_parents_set.clear()
-                    working_parents_set.update(new_parents)
+        # Find all team assignments with the Team Member role
+        team_assignments = RoleTeamAssignment.objects.filter(role_definition=team_member_role).select_related('team')
 
-            # add child team users to all of the discovered parent team object roles
-            for team in incl_teams:
-                team_users = list(RoleUserAssignment.objects.filter(object_id=team.id).values_list('user', flat=True))
+        for assignment in team_assignments:
+            parent_team_id = int(assignment.object_id)
+            child_team_id = assignment.team.id
+            team_to_team_relationships[parent_team_id].append(child_team_id)
 
-                # mirror changes to Role model
-                for parent_id in all_parents:
-                    parent_obj_role = team_member_object_roles.get(object_id=parent_id)
-                    parent_role = Team.objects.get(id=parent_id)
-                    for user in team_users:
-                        parent_obj_role.users.add(user.id)
-                        parent_role.member_role.members.add(user.id)
+        return team_to_team_relationships
 
+    def get_all_user_members_of_team(team_id, team_to_team_map, visited=None):
+        """
+        Recursively find all users who are members of a team, including through nested teams.
+        """
+        if visited is None:
+            visited = set()
 
-def clear_indirect_teams(apps, schema_editor):
-    """
-    Teams should not be team members on other Teams. If a Team's membership
-    ObjectRole has any teams assigned, clear it.
-    """
-    # get all roles for membership on teams
-    ObjectRole = apps.get_model('dab_rbac', 'ObjectRole')
-    Team = apps.get_model('main', 'Team')
+        if team_id in visited:
+            return set()  # Avoid infinite recursion
 
-    team_member_object_roles = ObjectRole.objects.filter(content_type__model='team').filter(role_definition__description='Team Member')
-    all_teams = Team.objects.all()
+        visited.add(team_id)
+        all_users = set()
 
-    # for team member roles, check if teams are assigned
-    for obj_role in team_member_object_roles:
-        incl_teams = obj_role.teams.all()
-        if incl_teams:
-            obj_role.teams.clear()
+        # Get direct user assignments to this team
+        user_assignments = RoleUserAssignment.objects.filter(role_definition=team_member_role, object_id=team_id).select_related('user')
 
-    # for Teams, check that member_role is not the parent of another role
-    for team in all_teams:
-        if team.member_role.children.all():
-            team.member_role.children.clear()
+        for assignment in user_assignments:
+            all_users.add(assignment.user)
+
+        # Get team-to-team assignments and recursively find their users
+        child_team_ids = team_to_team_map.get(team_id, [])
+        for child_team_id in child_team_ids:
+            nested_users = get_all_user_members_of_team(child_team_id, team_to_team_map, visited.copy())
+            all_users.update(nested_users)
+
+        return all_users
+
+    def remove_team_to_team_assignment(parent_team_id, child_team_id):
+        """
+        Remove team-to-team memberships.
+        """
+        parent_team = Team.objects.get(id=parent_team_id)
+        child_team = Team.objects.get(id=child_team_id)
+
+        # Remove all team-to-team RoleTeamAssignments
+        RoleTeamAssignment.objects.filter(role_definition=team_member_role, object_id=parent_team_id, team=child_team).delete()
+
+        # Check mirroring Team model for children under member_role
+        parent_team.member_role.children.filter(object_id=child_team_id).delete()
+
+    team_to_team_map = get_team_to_team_relationships()
+
+    if not team_to_team_map:
+        return  # No team-to-team relationships to consolidate
+
+    # Get content type for Team - needed for give_permissions
+    try:
+        from django.contrib.contenttypes.models import ContentType
+
+        team_content_type = ContentType.objects.get_for_model(Team)
+    except ImportError:
+        # Fallback if ContentType is not available
+        ContentType = apps.get_model('contenttypes', 'ContentType')
+        team_content_type = ContentType.objects.get_for_model(Team)
+
+    # Get all users who should be direct members of a team
+    for parent_team_id, child_team_ids in team_to_team_map.items():
+        all_users = get_all_user_members_of_team(parent_team_id, team_to_team_map)
+
+        # Create direct RoleUserAssignments for all users
+        if all_users:
+            give_permissions(apps=apps, rd=team_member_role, users=list(all_users), object_id=parent_team_id, content_type_id=team_content_type.id)
+
+        # Mirror assignments to Team model
+        parent_team = Team.objects.get(id=parent_team_id)
+        for user in all_users:
+            parent_team.member_role.members.add(user.id)
+
+        # Remove all team-to-team assignments for parent team
+        for child_team_id in child_team_ids:
+            remove_team_to_team_assignment(parent_team_id, child_team_id)
 
 
 class Migration(migrations.Migration):
@@ -88,5 +122,4 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(consolidate_indirect_user_roles, migrations.RunPython.noop),
-        migrations.RunPython(clear_indirect_teams, migrations.RunPython.noop),
     ]
