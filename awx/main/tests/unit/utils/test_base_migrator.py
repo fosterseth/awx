@@ -18,22 +18,66 @@ class TestBaseAuthenticatorMigrator:
 
     def test_generate_authenticator_slug(self):
         """Test slug generation is deterministic."""
-        slug1 = self.migrator._generate_authenticator_slug('github', 'github-org', 'client123')
-        slug2 = self.migrator._generate_authenticator_slug('github', 'github-org', 'client123')
+        slug1 = self.migrator._generate_authenticator_slug('github', 'github-org')
+        slug2 = self.migrator._generate_authenticator_slug('github', 'github-org')
 
         assert slug1 == slug2
-        assert slug1.startswith('awx-github-')
-        assert len(slug1.split('-')[-1]) == 8  # Hash should be 8 characters
+        assert slug1 == 'aap-github-github-org'
 
     def test_generate_authenticator_slug_different_inputs(self):
         """Test that different inputs generate different slugs."""
-        slug1 = self.migrator._generate_authenticator_slug('github', 'github-org', 'client123')
-        slug2 = self.migrator._generate_authenticator_slug('github', 'github-org', 'client456')
-        slug3 = self.migrator._generate_authenticator_slug('ldap', 'ldap', 'ldap://server')
+        slug1 = self.migrator._generate_authenticator_slug('github', 'github-org')
+        slug2 = self.migrator._generate_authenticator_slug('github', 'github-team')
+        slug3 = self.migrator._generate_authenticator_slug('ldap', 'ldap')
 
         assert slug1 != slug2
         assert slug1 != slug3
         assert slug2 != slug3
+        assert slug1 == 'aap-github-github-org'
+        assert slug2 == 'aap-github-github-team'
+        assert slug3 == 'aap-ldap-ldap'
+
+    def test_generate_authenticator_slug_ldap_variants(self):
+        """Test LDAP authenticator slug generation for all supported variants."""
+        # Test all LDAP authenticator naming variants
+        ldap_base = self.migrator._generate_authenticator_slug('ldap', 'ldap')
+        ldap1 = self.migrator._generate_authenticator_slug('ldap', 'ldap1')
+        ldap2 = self.migrator._generate_authenticator_slug('ldap', 'ldap2')
+        ldap3 = self.migrator._generate_authenticator_slug('ldap', 'ldap3')
+        ldap4 = self.migrator._generate_authenticator_slug('ldap', 'ldap4')
+        ldap5 = self.migrator._generate_authenticator_slug('ldap', 'ldap5')
+
+        # Verify correct slug format
+        assert ldap_base == 'aap-ldap-ldap'
+        assert ldap1 == 'aap-ldap-ldap1'
+        assert ldap2 == 'aap-ldap-ldap2'
+        assert ldap3 == 'aap-ldap-ldap3'
+        assert ldap4 == 'aap-ldap-ldap4'
+        assert ldap5 == 'aap-ldap-ldap5'
+
+        # Verify all slugs are unique
+        all_slugs = [ldap_base, ldap1, ldap2, ldap3, ldap4, ldap5]
+        assert len(all_slugs) == len(set(all_slugs))
+
+    def test_generate_authenticator_slug_github_variants(self):
+        """Test GitHub authenticator slug generation for all supported variants."""
+        # Test all GitHub authenticator naming variants
+        github_base = self.migrator._generate_authenticator_slug('github', 'github')
+        github_org = self.migrator._generate_authenticator_slug('github', 'github-org')
+        github_team = self.migrator._generate_authenticator_slug('github', 'github-team')
+        github_enterprise_org = self.migrator._generate_authenticator_slug('github', 'github-enterprise-org')
+        github_enterprise_team = self.migrator._generate_authenticator_slug('github', 'github-enterprise-team')
+
+        # Verify correct slug format
+        assert github_base == 'aap-github-github'
+        assert github_org == 'aap-github-github-org'
+        assert github_team == 'aap-github-github-team'
+        assert github_enterprise_org == 'aap-github-github-enterprise-org'
+        assert github_enterprise_team == 'aap-github-github-enterprise-team'
+
+        # Verify all slugs are unique
+        all_slugs = [github_base, github_org, github_team, github_enterprise_org, github_enterprise_team]
+        assert len(all_slugs) == len(set(all_slugs))
 
     def test_get_mapper_ignore_keys_default(self):
         """Test default mapper ignore keys."""
@@ -224,34 +268,39 @@ class TestMapperComparison:
 
     def test_mappers_match_structurally_identical(self):
         """Test that identical mappers match structurally."""
-        mapper1 = {'organization': 'myorg', 'team': 'engineering', 'map_type': 'team', 'role': 'Team Member'}
+        mapper1 = {'name': 'myorg - engineering', 'organization': 'myorg', 'team': 'engineering', 'map_type': 'team', 'role': 'Team Member'}
 
         mapper2 = mapper1.copy()
 
         assert self.migrator._mappers_match_structurally(mapper1, mapper2) is True
 
     def test_mappers_match_structurally_different_fields(self):
-        """Test that mappers don't match structurally when key fields differ."""
-        base_mapper = {'organization': 'myorg', 'team': 'engineering', 'map_type': 'team', 'role': 'Team Member'}
+        """Test that mappers match structurally when only name is the same."""
+        base_mapper = {'name': 'myorg - engineering', 'organization': 'myorg', 'team': 'engineering', 'map_type': 'team', 'role': 'Team Member'}
 
-        # Test different organization
+        # Test different organization but same name - should still match
         mapper2 = base_mapper.copy()
         mapper2['organization'] = 'otherorg'
-        assert self.migrator._mappers_match_structurally(base_mapper, mapper2) is False
+        assert self.migrator._mappers_match_structurally(base_mapper, mapper2) is True
 
-        # Test different team
+        # Test different team but same name - should still match
         mapper2 = base_mapper.copy()
         mapper2['team'] = 'qa'
-        assert self.migrator._mappers_match_structurally(base_mapper, mapper2) is False
+        assert self.migrator._mappers_match_structurally(base_mapper, mapper2) is True
 
-        # Test different map_type
+        # Test different map_type but same name - should still match
         mapper2 = base_mapper.copy()
         mapper2['map_type'] = 'organization'
-        assert self.migrator._mappers_match_structurally(base_mapper, mapper2) is False
+        assert self.migrator._mappers_match_structurally(base_mapper, mapper2) is True
 
-        # Test different role
+        # Test different role but same name - should still match
         mapper2 = base_mapper.copy()
         mapper2['role'] = 'Organization Admin'
+        assert self.migrator._mappers_match_structurally(base_mapper, mapper2) is True
+
+        # Test different name - should not match
+        mapper2 = base_mapper.copy()
+        mapper2['name'] = 'otherorg - qa'
         assert self.migrator._mappers_match_structurally(base_mapper, mapper2) is False
 
     def test_mapper_configs_match_identical(self):
@@ -593,36 +642,45 @@ def test_authenticator_configs_match_edge_cases(existing_auth, new_config, ignor
 
 
 @pytest.mark.parametrize(
-    "mapper1,mapper2,ignore_keys,expected",
+    "mapper1,mapper2,expected",
     [
-        # Test with None team values (org mappers)
+        # Test with same name
         (
-            {'organization': 'myorg', 'team': None, 'map_type': 'organization', 'role': 'Organization Admin'},
-            {'organization': 'myorg', 'team': None, 'map_type': 'organization', 'role': 'Organization Admin'},
-            [],
+            {'name': 'myorg - Organization Admins', 'organization': 'myorg', 'team': None, 'map_type': 'organization', 'role': 'Organization Admin'},
+            {'name': 'myorg - Organization Admins', 'organization': 'myorg', 'team': None, 'map_type': 'organization', 'role': 'Organization Admin'},
             True,
         ),
-        # Test with ignore keys (for structural matching, ignore_keys shouldn't matter)
+        # Test with same name but different other fields
         (
-            {'organization': 'myorg', 'team': 'eng', 'map_type': 'team', 'role': 'Team Member', 'id': 123},
-            {'organization': 'myorg', 'team': 'eng', 'map_type': 'team', 'role': 'Team Member', 'id': 456},
-            ['id'],
+            {'name': 'myorg - eng', 'organization': 'myorg', 'team': 'eng', 'map_type': 'team', 'role': 'Team Member', 'id': 123},
+            {'name': 'myorg - eng', 'organization': 'otherorg', 'team': 'qa', 'map_type': 'organization', 'role': 'Organization Admin', 'id': 456},
             True,
         ),
-        # Test structural mismatch
+        # Test with different names
+        (
+            {'name': 'myorg - eng', 'organization': 'myorg', 'team': 'eng', 'map_type': 'team', 'role': 'Team Member'},
+            {'name': 'myorg - qa', 'organization': 'myorg', 'team': 'qa', 'map_type': 'team', 'role': 'Team Member'},
+            False,
+        ),
+        # Test with missing name
         (
             {'organization': 'myorg', 'team': 'eng', 'map_type': 'team', 'role': 'Team Member'},
-            {'organization': 'myorg', 'team': 'qa', 'map_type': 'team', 'role': 'Team Member'},
-            [],
+            {'name': 'myorg - eng', 'organization': 'myorg', 'team': 'eng', 'map_type': 'team', 'role': 'Team Member'},
             False,
+        ),
+        # Test with both missing name
+        (
+            {'organization': 'myorg', 'team': 'eng', 'map_type': 'team', 'role': 'Team Member'},
+            {'organization': 'myorg', 'team': 'eng', 'map_type': 'team', 'role': 'Team Member'},
+            True,
         ),
     ],
 )
-def test_mappers_match_structurally_edge_cases(mapper1, mapper2, ignore_keys, expected):
-    """Test edge cases for mapper structural matching."""
+def test_mappers_match_structurally_edge_cases(mapper1, mapper2, expected):
+    """Test edge cases for mapper structural matching based on name."""
     gateway_client = Mock()
     command = Mock()
     migrator = BaseAuthenticatorMigrator(gateway_client, command)
 
-    result = migrator._mappers_match_structurally(mapper1, mapper2, ignore_keys)
+    result = migrator._mappers_match_structurally(mapper1, mapper2)
     assert result == expected

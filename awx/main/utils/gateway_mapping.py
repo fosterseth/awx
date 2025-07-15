@@ -163,3 +163,67 @@ def org_map_to_gateway_format(org_map, start_order=1):
                 order += 1
 
     return result, order
+
+
+def role_map_to_gateway_format(role_map, start_order=1):
+    """Convert AWX role mapping to Gateway authenticator format.
+
+    Args:
+        role_map: An LDAP or SAML role mapping
+        start_order: Starting order value for the mappers
+
+    Returns:
+        tuple: (List of Gateway-compatible organization mappers, next_order)
+    """
+    if role_map is None:
+        return [], start_order
+
+    result = []
+    order = start_order
+
+    for flag in role_map:
+        groups = role_map[flag]
+        if type(groups) is str:
+            groups = [groups]
+
+        if flag == 'is_superuser':
+            # Gateway has a special map_type for superusers
+            result.append(
+                {
+                    "name": f"{flag} - role",
+                    "authenticator": -1,
+                    "revoke": True,
+                    "map_type": flag,
+                    "team": None,
+                    "organization": None,
+                    "triggers": {
+                        "groups": {
+                            "has_or": groups,
+                        }
+                    },
+                    "order": order,
+                }
+            )
+        elif flag == 'is_system_auditor':
+            # roles other than superuser must be represented as a generic role mapper
+            result.append(
+                {
+                    "name": f"{flag} - role",
+                    "authenticator": -1,
+                    "revoke": True,
+                    "map_type": "role",
+                    "role": "Platform Auditor",
+                    "team": None,
+                    "organization": None,
+                    "triggers": {
+                        "groups": {
+                            "has_or": groups,
+                        }
+                    },
+                    "order": order,
+                }
+            )
+
+        order += 1
+
+    return result, order

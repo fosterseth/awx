@@ -5,8 +5,6 @@ This module defines the contract that all specific authenticator migrators must 
 """
 
 from awx.main.utils.gateway_client import GatewayAPIError
-import re
-import hashlib
 
 
 class BaseAuthenticatorMigrator:
@@ -15,16 +13,32 @@ class BaseAuthenticatorMigrator:
     Defines the contract that all specific authenticator migrators must follow.
     """
 
-    def __init__(self, gateway_client=None, command=None):
+    def __init__(self, gateway_client=None, command=None, force=False):
         """
         Initialize the authenticator migrator.
 
         Args:
             gateway_client: GatewayClient instance for API calls
             command: Optional Django management command instance (for styled output)
+            force: If True, force migration even if configurations already exist
         """
         self.gateway_client = gateway_client
         self.command = command
+        self.force = force
+        self.encrypted_fields = [
+            # LDAP Fields
+            'BIND_PASSWORD',
+            # The following authenticators all use the same key to store encrypted information:
+            # Generic OIDC
+            # RADIUS
+            # TACACS+
+            # GitHub OAuth2
+            # Azure AD OAuth2
+            # Google OAuth2
+            'SECRET',
+            # SAML Fields
+            'SP_PRIVATE_KEY',
+        ]
 
     def migrate(self):
         """
@@ -38,23 +52,36 @@ class BaseAuthenticatorMigrator:
 
         if not configs:
             self._write_output(f'No {self.get_authenticator_type()} authenticators found to migrate.', 'warning')
-            return {'created': 0, 'failed': 0, 'mappers_created': 0, 'mappers_failed': 0}
+            return {'created': 0, 'updated': 0, 'unchanged': 0, 'failed': 0, 'mappers_created': 0, 'mappers_updated': 0, 'mappers_failed': 0}
 
         self._write_output(f'Found {len(configs)} {self.get_authenticator_type()} authentication configuration(s).', 'success')
 
         # Process each authenticator configuration
         created_authenticators = []
-        for config in configs:
-            if self.create_gateway_authenticator(config):
-                created_authenticators.append(config)
+        updated_authenticators = []
+        unchanged_authenticators = []
+        failed_authenticators = []
 
-        # Process mappers for successfully created/updated authenticators
+        for config in configs:
+            result = self.create_gateway_authenticator(config)
+            if result['success']:
+                if result['action'] == 'created':
+                    created_authenticators.append(config)
+                elif result['action'] == 'updated':
+                    updated_authenticators.append(config)
+                elif result['action'] == 'skipped':
+                    unchanged_authenticators.append(config)
+            else:
+                failed_authenticators.append(config)
+
+        # Process mappers for successfully created/updated/unchanged authenticators
         mappers_created = 0
         mappers_updated = 0
         mappers_failed = 0
-        if created_authenticators:
+        successful_authenticators = created_authenticators + updated_authenticators + unchanged_authenticators
+        if successful_authenticators:
             self._write_output('\n=== Processing Authenticator Mappers ===', 'success')
-            for config in created_authenticators:
+            for config in successful_authenticators:
                 mapper_result = self._process_gateway_mappers(config)
                 mappers_created += mapper_result['created']
                 mappers_updated += mapper_result['updated']
@@ -62,7 +89,9 @@ class BaseAuthenticatorMigrator:
 
         return {
             'created': len(created_authenticators),
-            'failed': len(configs) - len(created_authenticators),
+            'updated': len(updated_authenticators),
+            'unchanged': len(unchanged_authenticators),
+            'failed': len(failed_authenticators),
             'mappers_created': mappers_created,
             'mappers_updated': mappers_updated,
             'mappers_failed': mappers_failed,
@@ -98,15 +127,9 @@ class BaseAuthenticatorMigrator:
         """
         raise NotImplementedError("Subclasses must implement get_authenticator_type()")
 
-    def _generate_authenticator_slug(self, auth_type, category, identifier):
+    def _generate_authenticator_slug(self, auth_type, category):
         """Generate a deterministic slug for an authenticator."""
-        base_string = f"awx-{auth_type}-{category}-{identifier}"
-        cleaned = re.sub(r'[^a-zA-Z0-9]+', '-', base_string.lower())
-        cleaned = re.sub(r'^-+|-+$', '', cleaned)
-        cleaned = re.sub(r'-+', '-', cleaned)
-        slug_hash = hashlib.md5(cleaned.encode('utf-8')).hexdigest()[:8]
-        final_slug = f"awx-{auth_type}-{slug_hash}"
-        return final_slug
+        return f"aap-{auth_type}-{category}".lower()
 
     def submit_authenticator(self, gateway_config, ignore_keys=[], config={}):
         """
@@ -118,12 +141,12 @@ class BaseAuthenticatorMigrator:
             config: Optional AWX config dict to store result data
 
         Returns:
-            bool: True if authenticator was submitted successfully, False otherwise
+            dict: Result with 'success' (bool), 'action' ('created', 'updated', 'skipped'), 'error' (str or None)
         """
         authenticator_slug = gateway_config.get('slug')
         if not authenticator_slug:
             self._write_output('Gateway config missing slug, cannot submit authenticator', 'error')
-            return False
+            return {'success': False, 'action': None, 'error': 'Missing slug'}
 
         try:
             # Check if authenticator already exists by slug
@@ -140,7 +163,7 @@ class BaseAuthenticatorMigrator:
                     # Store the existing result for mapper creation
                     config['gateway_authenticator_id'] = authenticator_id
                     config['gateway_authenticator'] = existing_authenticator
-                    return True
+                    return {'success': True, 'action': 'skipped', 'error': None}
                 else:
                     self._write_output(f'⚠ Authenticator exists but configuration differs (ID: {authenticator_id})', 'warning')
                     self._write_output('  Configuration comparison:')
@@ -163,12 +186,12 @@ class BaseAuthenticatorMigrator:
                         # Store the updated result for mapper creation
                         config['gateway_authenticator_id'] = authenticator_id
                         config['gateway_authenticator'] = result
-                        return True
+                        return {'success': True, 'action': 'updated', 'error': None}
                     except GatewayAPIError as e:
                         self._write_output(f'✗ Failed to update authenticator: {e.message}', 'error')
                         if e.response_data:
                             self._write_output(f'  Details: {e.response_data}', 'error')
-                        return False
+                        return {'success': False, 'action': 'update_failed', 'error': e.message}
             else:
                 # Authenticator doesn't exist, create it
                 self._write_output('Creating new authenticator...')
@@ -181,16 +204,16 @@ class BaseAuthenticatorMigrator:
                 # Store the result for potential mapper creation later
                 config['gateway_authenticator_id'] = result.get('id')
                 config['gateway_authenticator'] = result
-                return True
+                return {'success': True, 'action': 'created', 'error': None}
 
         except GatewayAPIError as e:
             self._write_output(f'✗ Failed to submit authenticator: {e.message}', 'error')
             if e.response_data:
                 self._write_output(f'  Details: {e.response_data}', 'error')
-            return False
+            return {'success': False, 'action': 'failed', 'error': e.message}
         except Exception as e:
             self._write_output(f'✗ Unexpected error submitting authenticator: {str(e)}', 'error')
-            return False
+            return {'success': False, 'action': 'failed', 'error': str(e)}
 
     def _authenticator_configs_match(self, existing_auth, new_config, ignore_keys=[]):
         """
@@ -205,6 +228,11 @@ class BaseAuthenticatorMigrator:
         Returns:
             bool: True if configurations match, False otherwise
         """
+        # Add encrypted fields to ignore_keys if force flag is not set
+        # This prevents secrets from being updated unless explicitly forced
+        effective_ignore_keys = ignore_keys.copy()
+        if not self.force:
+            effective_ignore_keys.extend(self.encrypted_fields)
 
         # Keep track of the differences between the existing and the new configuration
         # Logging them makes debugging much easier
@@ -227,7 +255,7 @@ class BaseAuthenticatorMigrator:
 
         # Helper function to check if a key should be ignored
         def should_ignore_key(config_key):
-            return config_key in ignore_keys
+            return config_key in effective_ignore_keys
 
         # Check if all keys in new config exist in existing config with same values
         for key, value in new_config_section.items():
@@ -273,7 +301,7 @@ class BaseAuthenticatorMigrator:
 
             # Try to find a matching existing mapper
             for existing_mapper in existing_mappers:
-                if self._mappers_match_structurally(existing_mapper, new_mapper, ignore_keys):
+                if self._mappers_match_structurally(existing_mapper, new_mapper):
                     matched_existing = existing_mapper
                     break
 
@@ -288,7 +316,7 @@ class BaseAuthenticatorMigrator:
 
         return mappers_to_update, mappers_to_create
 
-    def _mappers_match_structurally(self, existing_mapper, new_mapper, ignore_keys=None):
+    def _mappers_match_structurally(self, existing_mapper, new_mapper):
         """
         Check if two mappers match structurally (same organization, team, map_type, role).
         This identifies if they represent the same logical mapping.
@@ -296,16 +324,13 @@ class BaseAuthenticatorMigrator:
         Args:
             existing_mapper: Existing mapper configuration from Gateway
             new_mapper: New mapper configuration
-            ignore_keys: List of keys to ignore during comparison
 
         Returns:
             bool: True if mappers represent the same logical mapping
         """
-        if ignore_keys is None:
-            ignore_keys = []
 
         # Compare key structural fields that identify the same logical mapper
-        structural_fields = ['organization', 'team', 'map_type', 'role']
+        structural_fields = ['name']
 
         for field in structural_fields:
             if existing_mapper.get(field) != new_mapper.get(field):
@@ -357,7 +382,9 @@ class BaseAuthenticatorMigrator:
         category = config['category']
         org_mappers = config.get('org_mappers', [])
         team_mappers = config.get('team_mappers', [])
-        all_new_mappers = org_mappers + team_mappers
+        role_mappers = config.get('role_mappers', [])
+        allow_mappers = config.get('allow_mappers', [])
+        all_new_mappers = org_mappers + team_mappers + role_mappers + allow_mappers
 
         if len(all_new_mappers) == 0:
             self._write_output(f'No mappers to process for {category} authenticator')
@@ -366,6 +393,8 @@ class BaseAuthenticatorMigrator:
         self._write_output(f'\n--- Processing mappers for {category} authenticator (ID: {authenticator_id}) ---')
         self._write_output(f'Organization mappers: {len(org_mappers)}')
         self._write_output(f'Team mappers: {len(team_mappers)}')
+        self._write_output(f'Role mappers: {len(role_mappers)}')
+        self._write_output(f'Allow mappers: {len(allow_mappers)}')
 
         # Get existing mappers from Gateway
         try:
@@ -379,6 +408,9 @@ class BaseAuthenticatorMigrator:
 
         # Compare existing vs new mappers
         mappers_to_update, mappers_to_create = self._compare_mapper_lists(existing_mappers, all_new_mappers, ignore_keys)
+
+        self._write_output(f'Mappers to create: {len(mappers_to_create)}')
+        self._write_output(f'Mappers to update: {len(mappers_to_update)}')
 
         created_count = 0
         updated_count = 0
