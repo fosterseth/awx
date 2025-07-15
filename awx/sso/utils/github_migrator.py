@@ -114,8 +114,8 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
             return False
 
         # Generate authenticator name and slug
-        authenticator_name = f"AWX-{category.replace('-', '_').title()}"
-        authenticator_slug = self._generate_authenticator_slug('github', category, key_value)
+        authenticator_name = category
+        authenticator_slug = self._generate_authenticator_slug('github', category)
 
         # Map AWX category to Gateway authenticator type
         type_mapping = {
@@ -158,7 +158,7 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
         # CALLBACK_URL - automatically created by Gateway
         # SCOPE - relevant for mappers with team/org requirement, allows to read the org or team
         # SECRET - the secret is encrypted in Gateway, we have no way of comparing the decrypted value
-        ignore_keys = ['CALLBACK_URL', 'SCOPE', 'SECRET']
+        ignore_keys = ['CALLBACK_URL', 'SCOPE']
 
         # Submit the authenticator (create or update as needed)
         return self.submit_authenticator(gateway_config, ignore_keys, config)
