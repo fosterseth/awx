@@ -35,6 +35,13 @@ def existing_tacacsplus_user():
 
 
 @pytest.fixture
+def test_radius_config(settings):
+    settings.RADIUS_SERVER = '127.0.0.1'
+    settings.RADIUS_PORT = 1812
+    settings.RADIUS_SECRET = 'secret'
+
+
+@pytest.fixture
 def test_saml_config(settings):
     settings.SAML_SECURITY_CONFIG = {
         "wantNameId": True,

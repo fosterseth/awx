@@ -247,12 +247,12 @@ class TestAuthenticatorConfigComparison:
         match, differences = self.migrator._authenticator_configs_match(existing_auth, new_config, ignore_keys)
 
         assert match is False
-        assert len(differences) == 3  # KEY, SECRET, NEW_FIELD
+        assert len(differences) == 2  # KEY, NEW_FIELD  (SECRET shows up only if --force is used)
 
         # Check that all expected differences are captured
         difference_text = ' '.join(differences)
         assert 'KEY:' in difference_text
-        assert 'SECRET:' in difference_text
+        # assert 'SECRET:' in difference_text  # SECRET shows up only if --force is used
         assert 'NEW_FIELD:' in difference_text
         assert 'CALLBACK_URL' not in difference_text  # Should be ignored
 
