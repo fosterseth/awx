@@ -8,6 +8,7 @@ from awx.sso.utils.ldap_migrator import LDAPMigrator
 from awx.sso.utils.oidc_migrator import OIDCMigrator
 from awx.sso.utils.saml_migrator import SAMLMigrator
 from awx.sso.utils.radius_migrator import RADIUSMigrator
+from awx.sso.utils.tacacs_migrator import TACACSMigrator
 from awx.main.utils.gateway_client import GatewayClient, GatewayAPIError
 
 
@@ -20,6 +21,7 @@ class Command(BaseCommand):
         parser.add_argument('--skip-ad', action='store_true', help='Skip importing Azure AD authenticator')
         parser.add_argument('--skip-saml', action='store_true', help='Skip importing SAML authenticator')
         parser.add_argument('--skip-radius', action='store_true', help='Skip importing RADIUS authenticator')
+        parser.add_argument('--skip-tacacs', action='store_true', help='Skip importing TACACS+ authenticator')
         parser.add_argument('--force', action='store_true', help='Force migration even if configurations already exist')
 
     def handle(self, *args, **options):
@@ -34,6 +36,7 @@ class Command(BaseCommand):
         skip_ad = options['skip_ad']
         skip_saml = options['skip_saml']
         skip_radius = options['skip_radius']
+        skip_tacacs = options['skip_tacacs']
         force = options['force']
 
         # If the management command isn't called with all parameters needed to talk to Gateway, consider
@@ -76,6 +79,9 @@ class Command(BaseCommand):
 
                 if not skip_radius:
                     migrators.append(RADIUSMigrator(gateway_client, self, force=force))
+
+                if not skip_tacacs:
+                    migrators.append(TACACSMigrator(gateway_client, self, force=force))
 
                 # Run migrations
                 total_results = {

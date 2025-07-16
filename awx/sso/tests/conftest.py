@@ -69,3 +69,13 @@ def test_saml_config(settings):
             "x509cert": "A" * 64 + "B" * 64 + "C" * 23,
         }
     }
+
+
+@pytest.fixture
+def test_tacacs_config(settings):
+    settings.TACACSPLUS_HOST = "tacacshost"
+    settings.TACACSPLUS_PORT = 49
+    settings.TACACSPLUS_SECRET = "secret"
+    settings.TACACSPLUS_SESSION_TIMEOUT = 10
+    settings.TACACSPLUS_AUTH_PROTOCOL = "pap"
+    settings.TACACSPLUS_REM_ADDR = True
