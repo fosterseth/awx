@@ -49,8 +49,9 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
         idps = getattr(settings, "SOCIAL_AUTH_SAML_ENABLED_IDPS", {})
         security_config = getattr(settings, "SOCIAL_AUTH_SAML_SECURITY_CONFIG", {})
 
-        org_map_value = getattr(settings, "SOCIAL_AUTH_SAML_ORGANIZATION_MAP", None)
-        team_map_value = getattr(settings, "SOCIAL_AUTH_SAML_TEAM_MAP", None)
+        # Get org and team mappings using the new fallback functions
+        org_map_value = self.get_social_org_map("SOCIAL_AUTH_SAML_ORGANIZATION_MAP")
+        team_map_value = self.get_social_team_map("SOCIAL_AUTH_SAML_TEAM_MAP")
         extra_data = getattr(settings, "SOCIAL_AUTH_SAML_EXTRA_DATA", None)
         support_contact = getattr(settings, "SOCIAL_AUTH_SAML_SUPPORT_CONTACT", {})
         technical_contact = getattr(settings, "SOCIAL_AUTH_SAML_TECHNICAL_CONTACT", {})

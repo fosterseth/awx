@@ -66,8 +66,8 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
                         continue
 
                     # If we have both key and secret, collect all settings
-                    org_map_value = None
-                    team_map_value = None
+                    org_map_setting_name = None
+                    team_map_setting_name = None
 
                     for setting_name in category_settings:
                         # Skip if setting_name is not a string (e.g., regex pattern)
@@ -76,11 +76,15 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
                         value = getattr(settings, setting_name, None)
                         config_data[setting_name] = value
 
-                        # Capture org and team map values for special processing
+                        # Capture org and team map setting names for special processing
                         if setting_name.endswith('_ORGANIZATION_MAP'):
-                            org_map_value = value
+                            org_map_setting_name = setting_name
                         elif setting_name.endswith('_TEAM_MAP'):
-                            team_map_value = value
+                            team_map_setting_name = setting_name
+
+                    # Get org and team mappings using the new fallback functions
+                    org_map_value = self.get_social_org_map(org_map_setting_name) if org_map_setting_name else {}
+                    team_map_value = self.get_social_team_map(team_map_setting_name) if team_map_setting_name else {}
 
                     # Convert GitHub org and team mappings from AWX to the Gateway format
                     # Start with order 1 and maintain sequence across both org and team mappers

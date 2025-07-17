@@ -4,6 +4,7 @@ Base authenticator migrator class.
 This module defines the contract that all specific authenticator migrators must follow.
 """
 
+from django.conf import settings
 from awx.main.utils.gateway_client import GatewayAPIError
 
 
@@ -511,6 +512,46 @@ class BaseAuthenticatorMigrator:
             mapper_name = mapper_config.get('name', 'Unknown')
             self._write_output(f'  ✗ Unexpected error creating {mapper_type} mapper "{mapper_name}": {str(e)}', 'error')
             return False
+
+    def get_social_org_map(self, authenticator_setting_name):
+        """
+        Get social auth organization map with fallback to global setting.
+
+        Args:
+            authenticator_setting_name: Name of the authenticator-specific organization map setting
+                                      (e.g., 'SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP')
+
+        Returns:
+            dict: Organization mapping configuration, with fallback to global setting
+        """
+        # Try authenticator-specific setting first
+        authenticator_map = getattr(settings, authenticator_setting_name, None)
+        if authenticator_map:
+            return authenticator_map
+
+        # Fall back to global setting
+        global_map = getattr(settings, 'SOCIAL_AUTH_ORGANIZATION_MAP', {})
+        return global_map
+
+    def get_social_team_map(self, authenticator_setting_name):
+        """
+        Get social auth team map with fallback to global setting.
+
+        Args:
+            authenticator_setting_name: Name of the authenticator-specific team map setting
+                                      (e.g., 'SOCIAL_AUTH_GITHUB_TEAM_MAP')
+
+        Returns:
+            dict: Team mapping configuration, with fallback to global setting
+        """
+        # Try authenticator-specific setting first
+        authenticator_map = getattr(settings, authenticator_setting_name, None)
+        if authenticator_map:
+            return authenticator_map
+
+        # Fall back to global setting
+        global_map = getattr(settings, 'SOCIAL_AUTH_TEAM_MAP', {})
+        return global_map
 
     def _write_output(self, message, style=None):
         """Write output message if command is available."""

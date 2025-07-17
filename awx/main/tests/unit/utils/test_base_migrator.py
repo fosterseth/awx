@@ -3,7 +3,7 @@ Unit tests for base authenticator migrator functionality.
 """
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from awx.sso.utils.base_migrator import BaseAuthenticatorMigrator
 
 
@@ -684,3 +684,188 @@ def test_mappers_match_structurally_edge_cases(mapper1, mapper2, expected):
 
     result = migrator._mappers_match_structurally(mapper1, mapper2)
     assert result == expected
+
+
+class TestSocialAuthMapFunctions:
+    """Test cases for social auth map functions."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.gateway_client = Mock()
+        self.command_obj = Mock()
+        self.migrator = BaseAuthenticatorMigrator(self.gateway_client, self.command_obj)
+
+    @patch('awx.sso.utils.base_migrator.settings')
+    def test_get_social_org_map_with_authenticator_specific_setting(self, mock_settings):
+        """Test get_social_org_map returns authenticator-specific setting when available."""
+        # Set up mock settings
+        authenticator_map = {'org1': ['team1', 'team2']}
+        global_map = {'global_org': ['global_team']}
+
+        mock_settings.SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP = authenticator_map
+        mock_settings.SOCIAL_AUTH_ORGANIZATION_MAP = global_map
+
+        # Mock getattr to return the specific setting
+        with patch('awx.sso.utils.base_migrator.getattr') as mock_getattr:
+            mock_getattr.side_effect = lambda obj, name, default=None: {
+                'SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP': authenticator_map,
+                'SOCIAL_AUTH_ORGANIZATION_MAP': global_map,
+            }.get(name, default)
+
+            result = self.migrator.get_social_org_map('SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP')
+
+            assert result == authenticator_map
+            # Verify it was called with the authenticator-specific setting first
+            mock_getattr.assert_any_call(mock_settings, 'SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP', None)
+
+    @patch('awx.sso.utils.base_migrator.settings')
+    def test_get_social_org_map_fallback_to_global(self, mock_settings):
+        """Test get_social_org_map falls back to global setting when authenticator-specific is empty."""
+        # Set up mock settings
+        global_map = {'global_org': ['global_team']}
+
+        # Mock getattr to return None for authenticator-specific, global for fallback
+        with patch('awx.sso.utils.base_migrator.getattr') as mock_getattr:
+            mock_getattr.side_effect = lambda obj, name, default=None: {
+                'SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP': None,
+                'SOCIAL_AUTH_ORGANIZATION_MAP': global_map,
+            }.get(name, default)
+
+            result = self.migrator.get_social_org_map('SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP')
+
+            assert result == global_map
+            # Verify both calls were made
+            mock_getattr.assert_any_call(mock_settings, 'SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP', None)
+            mock_getattr.assert_any_call(mock_settings, 'SOCIAL_AUTH_ORGANIZATION_MAP', {})
+
+    @patch('awx.sso.utils.base_migrator.settings')
+    def test_get_social_org_map_empty_dict_fallback(self, mock_settings):
+        """Test get_social_org_map returns empty dict when neither setting exists."""
+        # Mock getattr to return None for both settings
+        with patch('awx.sso.utils.base_migrator.getattr') as mock_getattr:
+            mock_getattr.side_effect = lambda obj, name, default=None: {'SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP': None, 'SOCIAL_AUTH_ORGANIZATION_MAP': {}}.get(
+                name, default
+            )
+
+            result = self.migrator.get_social_org_map('SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP')
+
+            assert result == {}
+
+    @patch('awx.sso.utils.base_migrator.settings')
+    def test_get_social_team_map_with_authenticator_specific_setting(self, mock_settings):
+        """Test get_social_team_map returns authenticator-specific setting when available."""
+        # Set up mock settings
+        authenticator_map = {'team1': {'organization': 'org1'}}
+        global_map = {'global_team': {'organization': 'global_org'}}
+
+        # Mock getattr to return the specific setting
+        with patch('awx.sso.utils.base_migrator.getattr') as mock_getattr:
+            mock_getattr.side_effect = lambda obj, name, default=None: {
+                'SOCIAL_AUTH_GITHUB_TEAM_MAP': authenticator_map,
+                'SOCIAL_AUTH_TEAM_MAP': global_map,
+            }.get(name, default)
+
+            result = self.migrator.get_social_team_map('SOCIAL_AUTH_GITHUB_TEAM_MAP')
+
+            assert result == authenticator_map
+            # Verify it was called with the authenticator-specific setting first
+            mock_getattr.assert_any_call(mock_settings, 'SOCIAL_AUTH_GITHUB_TEAM_MAP', None)
+
+    @patch('awx.sso.utils.base_migrator.settings')
+    def test_get_social_team_map_fallback_to_global(self, mock_settings):
+        """Test get_social_team_map falls back to global setting when authenticator-specific is empty."""
+        # Set up mock settings
+        global_map = {'global_team': {'organization': 'global_org'}}
+
+        # Mock getattr to return None for authenticator-specific, global for fallback
+        with patch('awx.sso.utils.base_migrator.getattr') as mock_getattr:
+            mock_getattr.side_effect = lambda obj, name, default=None: {'SOCIAL_AUTH_GITHUB_TEAM_MAP': None, 'SOCIAL_AUTH_TEAM_MAP': global_map}.get(
+                name, default
+            )
+
+            result = self.migrator.get_social_team_map('SOCIAL_AUTH_GITHUB_TEAM_MAP')
+
+            assert result == global_map
+            # Verify both calls were made
+            mock_getattr.assert_any_call(mock_settings, 'SOCIAL_AUTH_GITHUB_TEAM_MAP', None)
+            mock_getattr.assert_any_call(mock_settings, 'SOCIAL_AUTH_TEAM_MAP', {})
+
+    @patch('awx.sso.utils.base_migrator.settings')
+    def test_get_social_team_map_empty_dict_fallback(self, mock_settings):
+        """Test get_social_team_map returns empty dict when neither setting exists."""
+        # Mock getattr to return None for both settings
+        with patch('awx.sso.utils.base_migrator.getattr') as mock_getattr:
+            mock_getattr.side_effect = lambda obj, name, default=None: {'SOCIAL_AUTH_GITHUB_TEAM_MAP': None, 'SOCIAL_AUTH_TEAM_MAP': {}}.get(name, default)
+
+            result = self.migrator.get_social_team_map('SOCIAL_AUTH_GITHUB_TEAM_MAP')
+
+            assert result == {}
+
+    @patch('awx.sso.utils.base_migrator.settings')
+    def test_get_social_org_map_with_empty_string_fallback(self, mock_settings):
+        """Test get_social_org_map falls back to global when authenticator-specific is empty string."""
+        # Set up mock settings
+        global_map = {'global_org': ['global_team']}
+
+        # Mock getattr to return empty string for authenticator-specific
+        with patch('awx.sso.utils.base_migrator.getattr') as mock_getattr:
+            mock_getattr.side_effect = lambda obj, name, default=None: {
+                'SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP': '',
+                'SOCIAL_AUTH_ORGANIZATION_MAP': global_map,
+            }.get(name, default)
+
+            result = self.migrator.get_social_org_map('SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP')
+
+            assert result == global_map
+
+    @patch('awx.sso.utils.base_migrator.settings')
+    def test_get_social_team_map_with_empty_dict_fallback(self, mock_settings):
+        """Test get_social_team_map falls back to global when authenticator-specific is empty dict."""
+        # Set up mock settings
+        global_map = {'global_team': {'organization': 'global_org'}}
+
+        # Mock getattr to return empty dict for authenticator-specific
+        with patch('awx.sso.utils.base_migrator.getattr') as mock_getattr:
+            mock_getattr.side_effect = lambda obj, name, default=None: {'SOCIAL_AUTH_GITHUB_TEAM_MAP': {}, 'SOCIAL_AUTH_TEAM_MAP': global_map}.get(
+                name, default
+            )
+
+            result = self.migrator.get_social_team_map('SOCIAL_AUTH_GITHUB_TEAM_MAP')
+
+            # Empty dict is falsy, so it should fall back to global
+            assert result == global_map
+
+    def test_get_social_org_map_different_authenticators(self):
+        """Test get_social_org_map works with different authenticator setting names."""
+        test_cases = [
+            'SOCIAL_AUTH_GITHUB_ORGANIZATION_MAP',
+            'SOCIAL_AUTH_AZUREAD_OAUTH2_ORGANIZATION_MAP',
+            'SOCIAL_AUTH_SAML_ORGANIZATION_MAP',
+            'SOCIAL_AUTH_OIDC_ORGANIZATION_MAP',
+        ]
+
+        for setting_name in test_cases:
+            with patch('awx.sso.utils.base_migrator.getattr') as mock_getattr:
+                mock_getattr.side_effect = lambda obj, name, default=None: {
+                    setting_name: {'test_org': ['test_team']},
+                    'SOCIAL_AUTH_ORGANIZATION_MAP': {'fallback_org': ['fallback_team']},
+                }.get(name, default)
+
+                result = self.migrator.get_social_org_map(setting_name)
+
+                assert result == {'test_org': ['test_team']}
+
+    def test_get_social_team_map_different_authenticators(self):
+        """Test get_social_team_map works with different authenticator setting names."""
+        test_cases = ['SOCIAL_AUTH_GITHUB_TEAM_MAP', 'SOCIAL_AUTH_AZUREAD_OAUTH2_TEAM_MAP', 'SOCIAL_AUTH_SAML_TEAM_MAP', 'SOCIAL_AUTH_OIDC_TEAM_MAP']
+
+        for setting_name in test_cases:
+            with patch('awx.sso.utils.base_migrator.getattr') as mock_getattr:
+                mock_getattr.side_effect = lambda obj, name, default=None: {
+                    setting_name: {'test_team': {'organization': 'test_org'}},
+                    'SOCIAL_AUTH_TEAM_MAP': {'fallback_team': {'organization': 'fallback_org'}},
+                }.get(name, default)
+
+                result = self.migrator.get_social_team_map(setting_name)
+
+                assert result == {'test_team': {'organization': 'test_org'}}
