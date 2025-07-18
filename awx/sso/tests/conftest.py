@@ -42,7 +42,7 @@ def test_radius_config(settings):
 
 
 @pytest.fixture
-def test_saml_config(settings):
+def basic_saml_config(settings):
     settings.SAML_SECURITY_CONFIG = {
         "wantNameId": True,
         "signMetadata": False,
@@ -70,6 +70,29 @@ def test_saml_config(settings):
         }
     }
 
+    settings.SOCIAL_AUTH_SAML_TEAM_ATTR = {
+        "remove": False,
+        "saml_attr": "group_name",
+        "team_org_map": [
+            {"team": "internal:unix:domain:admins", "team_alias": "Administrators", "organization": "Default"},
+            {"team": "East Coast", "organization": "North America"},
+            {"team": "developers", "organization": "North America"},
+            {"team": "developers", "organization": "South America"},
+        ],
+    }
+
+    settings.SOCIAL_AUTH_SAML_USER_FLAGS_BY_ATTR = {
+        "is_superuser_role": ["wilma"],
+        "is_superuser_attr": "friends",
+        "is_superuser_value": ["barney", "fred"],
+        "remove_superusers": False,
+        "is_system_auditor_role": ["fred"],
+        "is_system_auditor_attr": "auditor",
+        "is_system_auditor_value": ["bamm-bamm"],
+    }
+
+    settings.SOCIAL_AUTH_SAML_ORGANIZATION_ATTR = {"saml_attr": "member-of", "remove": True, "saml_admin_attr": "admin-of", "remove_admins": False}
+
 
 @pytest.fixture
 def test_tacacs_config(settings):
@@ -79,3 +102,49 @@ def test_tacacs_config(settings):
     settings.TACACSPLUS_SESSION_TIMEOUT = 10
     settings.TACACSPLUS_AUTH_PROTOCOL = "pap"
     settings.TACACSPLUS_REM_ADDR = True
+
+
+@pytest.fixture
+def saml_config_user_flags_no_value(settings):
+    settings.SAML_SECURITY_CONFIG = {
+        "wantNameId": True,
+        "signMetadata": False,
+        "digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
+        "nameIdEncrypted": False,
+        "signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+        "authnRequestsSigned": False,
+        "logoutRequestSigned": False,
+        "wantNameIdEncrypted": False,
+        "logoutResponseSigned": False,
+        "wantAssertionsSigned": True,
+        "requestedAuthnContext": False,
+        "wantAssertionsEncrypted": False,
+    }
+    settings.SOCIAL_AUTH_SAML_ENABLED_IDPS = {
+        "example": {
+            "attr_email": "email",
+            "attr_first_name": "first_name",
+            "attr_last_name": "last_name",
+            "attr_user_permanent_id": "username",
+            "attr_username": "username",
+            "entity_id": "https://www.example.com/realms/sample",
+            "url": "https://www.example.com/realms/sample/protocol/saml",
+            "x509cert": "A" * 64 + "B" * 64 + "C" * 23,
+        }
+    }
+
+    settings.SOCIAL_AUTH_SAML_TEAM_ATTR = {
+        "remove": False,
+        "saml_attr": "group_name",
+        "team_org_map": [
+            {"team": "internal:unix:domain:admins", "team_alias": "Administrators", "organization": "Default"},
+            {"team": "East Coast", "organization": "North America"},
+            {"team": "developers", "organization": "North America"},
+            {"team": "developers", "organization": "South America"},
+        ],
+    }
+
+    settings.SOCIAL_AUTH_SAML_USER_FLAGS_BY_ATTR = {
+        "is_superuser_role": ["wilma"],
+        "is_superuser_attr": "friends",
+    }
