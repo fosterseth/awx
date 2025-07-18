@@ -27,7 +27,7 @@ class GatewayAPIError(Exception):
 class GatewayClient:
     """Client for AAP Gateway REST API interactions."""
 
-    def __init__(self, base_url: str, username: str, password: str, skip_verify: bool = False):
+    def __init__(self, base_url: str, username: str, password: str, skip_verify: bool = False, skip_session_init: bool = False, command=None):
         """Initialize Gateway client.
 
         Args:
@@ -35,31 +35,38 @@ class GatewayClient:
             username: Username for authentication
             password: Password for authentication
             skip_verify: Skip SSL certificate verification
+            skip_session_init: Skip initializing the session.  Only set to True if you are using a base class that doesn't need the initialization of the session.
+            command: The command object.  This is used to write output to the console.
         """
         self.base_url = base_url.rstrip('/')
         self.username = username
         self.password = password
         self.skip_verify = skip_verify
+        self.command = command
+        self.session_was_not_initialized = skip_session_init
 
         # Initialize session
-        self.session = requests.Session()
+        if not skip_session_init:
+            self.session = requests.Session()
 
-        # Configure SSL verification
-        if skip_verify:
-            self.session.verify = False
-            # Disable SSL warnings when verification is disabled
-            import urllib3
+            # Configure SSL verification
+            if skip_verify:
+                self.session.verify = False
+                # Disable SSL warnings when verification is disabled
+                import urllib3
 
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-        # Set default headers
-        self.session.headers.update(
-            {
-                'User-Agent': 'AWX-Gateway-Migration-Client/1.0',
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-            }
-        )
+            # Set default headers
+            self.session.headers.update(
+                {
+                    'User-Agent': 'AWX-Gateway-Migration-Client/1.0',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                }
+            )
+        else:
+            self.session = None
 
         # Authentication state
         self._authenticated = False
@@ -402,3 +409,15 @@ class GatewayClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close()
+
+    def _write_output(self, message, style=None):
+        """Write output message if command is available."""
+        if self.command:
+            if style == 'success':
+                self.command.stdout.write(self.command.style.SUCCESS(message))
+            elif style == 'warning':
+                self.command.stdout.write(self.command.style.WARNING(message))
+            elif style == 'error':
+                self.command.stdout.write(self.command.style.ERROR(message))
+            else:
+                self.command.stdout.write(message)

@@ -2,6 +2,7 @@ import sys
 import os
 
 from django.core.management.base import BaseCommand
+from urllib.parse import urlparse, urlunparse
 from awx.sso.utils.azure_ad_migrator import AzureADMigrator
 from awx.sso.utils.github_migrator import GitHubMigrator
 from awx.sso.utils.ldap_migrator import LDAPMigrator
@@ -11,12 +12,15 @@ from awx.sso.utils.radius_migrator import RADIUSMigrator
 from awx.sso.utils.tacacs_migrator import TACACSMigrator
 from awx.sso.utils.google_oauth2_migrator import GoogleOAuth2Migrator
 from awx.main.utils.gateway_client import GatewayClient, GatewayAPIError
+from awx.main.utils.gateway_client_svc_token import GatewayClientSVCToken
+from ansible_base.resource_registry.tasks.sync import create_api_client
 
 
 class Command(BaseCommand):
     help = 'Import existing auth provider configurations to AAP Gateway via API requests'
 
     def add_arguments(self, parser):
+        parser.add_argument('--basic-auth', action='store_true', help='Use HTTP Basic Authentication between Controller and Gateway')
         parser.add_argument('--skip-oidc', action='store_true', help='Skip importing GitHub and generic OIDC authenticators')
         parser.add_argument('--skip-ldap', action='store_true', help='Skip importing LDAP authenticators')
         parser.add_argument('--skip-ad', action='store_true', help='Skip importing Azure AD authenticator')
@@ -41,28 +45,64 @@ class Command(BaseCommand):
         skip_tacacs = options['skip_tacacs']
         skip_google = options['skip_google']
         force = options['force']
+        basic_auth = options['basic_auth']
+
+        management_command_validation_errors = []
 
         # If the management command isn't called with all parameters needed to talk to Gateway, consider
         # it a dry-run and exit cleanly
-        if not gateway_base_url or not gateway_user or not gateway_password:
+        if not gateway_base_url and basic_auth:
+            management_command_validation_errors.append('- GATEWAY_BASE_URL: Base URL of the AAP Gateway instance')
+        if (not gateway_user or not gateway_password) and basic_auth:
+            management_command_validation_errors.append('- GATEWAY_USER: Username for AAP Gateway authentication')
+            management_command_validation_errors.append('- GATEWAY_PASSWORD: Password for AAP Gateway authentication')
+
+        if len(management_command_validation_errors) > 0:
             self.stdout.write(self.style.WARNING('Missing required environment variables:'))
-            self.stdout.write(self.style.WARNING('- GATEWAY_BASE_URL: Base URL of the AAP Gateway instance'))
-            self.stdout.write(self.style.WARNING('- GATEWAY_USER: Username for AAP Gateway authentication'))
-            self.stdout.write(self.style.WARNING('- GATEWAY_PASSWORD: Password for AAP Gateway authentication'))
+            for validation_error in management_command_validation_errors:
+                self.stdout.write(self.style.WARNING(f"{validation_error}"))
             self.stdout.write(self.style.WARNING('- GATEWAY_SKIP_VERIFY: Skip SSL certificate verification (optional)'))
             sys.exit(0)
 
-        self.stdout.write(self.style.SUCCESS(f'Gateway Base URL: {gateway_base_url}'))
-        self.stdout.write(self.style.SUCCESS(f'Gateway User: {gateway_user}'))
-        self.stdout.write(self.style.SUCCESS(f'Gateway Password: {"*" * len(gateway_password)}'))
-        self.stdout.write(self.style.SUCCESS(f'Skip SSL Verification: {gateway_skip_verify}'))
+        resource_api_client = None
+        response = None
+
+        if basic_auth:
+            self.stdout.write(self.style.SUCCESS('HTTP Basic Auth: true'))
+            self.stdout.write(self.style.SUCCESS(f'Gateway Base URL: {gateway_base_url}'))
+            self.stdout.write(self.style.SUCCESS(f'Gateway User: {gateway_user}'))
+            self.stdout.write(self.style.SUCCESS('Gateway Password: *******************'))
+            self.stdout.write(self.style.SUCCESS(f'Skip SSL Verification: {gateway_skip_verify}'))
+
+        else:
+            resource_api_client = create_api_client()
+            resource_api_client.verify_https = not gateway_skip_verify
+            response = resource_api_client.get_service_metadata()
+            parsed_url = urlparse(resource_api_client.base_url)
+            resource_api_client.base_url = urlunparse((parsed_url.scheme, parsed_url.netloc, '/', '', '', ''))
+
+            self.stdout.write(self.style.SUCCESS('Gateway Service Token: true'))
+            self.stdout.write(self.style.SUCCESS(f'Gateway Base URL: {resource_api_client.base_url}'))
+            self.stdout.write(self.style.SUCCESS(f'Gateway JWT User: {resource_api_client.jwt_user_id}'))
+            self.stdout.write(self.style.SUCCESS(f'Gateway JWT Expiration: {resource_api_client.jwt_expiration}'))
+            self.stdout.write(self.style.SUCCESS(f'Skip SSL Verification: {not resource_api_client.verify_https}'))
+            self.stdout.write(self.style.SUCCESS(f'Connection Validated: {response.status_code == 200}'))
 
         # Create Gateway client and run migrations
         try:
             self.stdout.write(self.style.SUCCESS('\n=== Connecting to Gateway ==='))
+            pre_gateway_client = None
+            if basic_auth:
+                self.stdout.write(self.style.SUCCESS('\n=== With Basic HTTP Auth ==='))
+                pre_gateway_client = GatewayClient(
+                    base_url=gateway_base_url, username=gateway_user, password=gateway_password, skip_verify=gateway_skip_verify, command=self
+                )
 
-            with GatewayClient(base_url=gateway_base_url, username=gateway_user, password=gateway_password, skip_verify=gateway_skip_verify) as gateway_client:
+            else:
+                self.stdout.write(self.style.SUCCESS('\n=== With Service Token ==='))
+                pre_gateway_client = GatewayClientSVCToken(resource_api_client=resource_api_client, command=self)
 
+            with pre_gateway_client as gateway_client:
                 self.stdout.write(self.style.SUCCESS('Successfully connected to Gateway'))
 
                 # Initialize migrators
