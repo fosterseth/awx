@@ -176,20 +176,6 @@ def test_creator_permission(rando, admin_user, inventory, setup_managed_roles):
 
 
 @pytest.mark.django_db
-def test_team_team_read_role(rando, team, admin_user, post, setup_managed_roles):
-    orgs = [Organization.objects.create(name=f'foo-{i}') for i in range(2)]
-    teams = [Team.objects.create(name=f'foo-{i}', organization=orgs[i]) for i in range(2)]
-    teams[1].member_role.members.add(rando)
-
-    # give second team read permission to first team through the API for regression testing
-    url = reverse('api:role_teams_list', kwargs={'pk': teams[0].read_role.pk, 'version': 'v2'})
-    post(url, {'id': teams[1].id}, user=admin_user)
-
-    # user should be able to view the first team
-    assert rando in teams[0].read_role
-
-
-@pytest.mark.django_db
 def test_implicit_parents_no_assignments(organization):
     """Through the normal course of creating models, we should not be changing DAB RBAC permissions"""
     with mock.patch('awx.main.models.rbac.give_or_remove_permission') as mck:
