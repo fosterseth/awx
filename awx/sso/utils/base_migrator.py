@@ -513,7 +513,7 @@ class BaseAuthenticatorMigrator:
             self._write_output(f'  ✗ Unexpected error creating {mapper_type} mapper "{mapper_name}": {str(e)}', 'error')
             return False
 
-    def get_social_org_map(self, authenticator_setting_name):
+    def get_social_org_map(self, authenticator_setting_name=None):
         """
         Get social auth organization map with fallback to global setting.
 
@@ -525,15 +525,15 @@ class BaseAuthenticatorMigrator:
             dict: Organization mapping configuration, with fallback to global setting
         """
         # Try authenticator-specific setting first
-        authenticator_map = getattr(settings, authenticator_setting_name, None)
-        if authenticator_map:
-            return authenticator_map
+        if authenticator_setting_name:
+            if authenticator_map := getattr(settings, authenticator_setting_name, None):
+                return authenticator_map
 
         # Fall back to global setting
         global_map = getattr(settings, 'SOCIAL_AUTH_ORGANIZATION_MAP', {})
         return global_map
 
-    def get_social_team_map(self, authenticator_setting_name):
+    def get_social_team_map(self, authenticator_setting_name=None):
         """
         Get social auth team map with fallback to global setting.
 
@@ -545,9 +545,9 @@ class BaseAuthenticatorMigrator:
             dict: Team mapping configuration, with fallback to global setting
         """
         # Try authenticator-specific setting first
-        authenticator_map = getattr(settings, authenticator_setting_name, None)
-        if authenticator_map:
-            return authenticator_map
+        if authenticator_setting_name:
+            if authenticator_map := getattr(settings, authenticator_setting_name, None):
+                return authenticator_map
 
         # Fall back to global setting
         global_map = getattr(settings, 'SOCIAL_AUTH_TEAM_MAP', {})

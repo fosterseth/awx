@@ -41,8 +41,8 @@ class OIDCMigrator(BaseAuthenticatorMigrator):
         verify_ssl = getattr(settings, "SOCIAL_AUTH_OIDC_VERIFY_SSL", True)
 
         # Get organization and team mappings
-        org_map_value = self.get_social_org_map("SOCIAL_AUTH_OIDC_ORGANIZATION_MAP")
-        team_map_value = self.get_social_team_map("SOCIAL_AUTH_OIDC_TEAM_MAP")
+        org_map_value = self.get_social_org_map()
+        team_map_value = self.get_social_team_map()
 
         # Convert org and team mappings from AWX to the Gateway format
         # Start with order 1 and maintain sequence across both org and team mappers
@@ -76,10 +76,9 @@ class OIDCMigrator(BaseAuthenticatorMigrator):
         """Create a generic OIDC authenticator in Gateway."""
         category = config["category"]
         config_settings = config["settings"]
-        name = config_settings["name"]
 
         # Generate authenticator name and slug
-        authenticator_name = f"AWX-{category.replace(' ', '_').title()}-{name}"
+        authenticator_name = "oidc"
         authenticator_slug = self._generate_authenticator_slug("oidc", category)
 
         self._write_output(f"\n--- Processing {category} authenticator ---")

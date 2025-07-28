@@ -60,10 +60,9 @@ class RADIUSMigrator(BaseAuthenticatorMigrator):
         """Create a RADIUS authenticator in Gateway."""
         category = config["category"]
         config_settings = config["settings"]
-        name = config_settings["name"]
 
         # Generate authenticator name and slug
-        authenticator_name = f"AWX-{category.replace('-', '_').title()}-{name}"
+        authenticator_name = "radius"
         authenticator_slug = self._generate_authenticator_slug("radius", category)
 
         self._write_output(f"\n--- Processing {category} authenticator ---")

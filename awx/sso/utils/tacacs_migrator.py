@@ -66,11 +66,10 @@ class TACACSMigrator(BaseAuthenticatorMigrator):
         """Create a TACACS+ authenticator in Gateway."""
         category = config["category"]
         config_settings = config["settings"]
-        name = config_settings["name"]
 
         # Generate authenticator name and slug
-        authenticator_name = f"AWX-{category.replace('+', 'plus').replace('-', '_').title()}-{name}"
-        authenticator_slug = self._generate_authenticator_slug("tacacsplus", category)
+        authenticator_name = "tacacs"
+        authenticator_slug = self._generate_authenticator_slug("tacacs", category)
 
         self._write_output(f"\n--- Processing {category} authenticator ---")
         self._write_output(f"Name: {authenticator_name}")
