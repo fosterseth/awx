@@ -397,6 +397,93 @@ class GatewayClient:
 
         return self.create_authenticator(config)
 
+    def update_gateway_setting(self, setting_name: str, setting_value: Any) -> Dict[str, Any]:
+        """Update a Gateway setting via the settings API.
+
+        Args:
+            setting_name: Name of the setting to update
+            setting_value: Value to set for the setting
+
+        Returns:
+            dict: Upon successful update, well formed responses are returned, otherwise the original payload is returned.
+
+        Raises:
+            GatewayAPIError: If update fails, anything other than a 200 or 204 response code.
+        """
+        endpoint = '/api/gateway/v1/settings/all/'
+
+        # Create the JSON payload with the setting name and value
+        payload = {setting_name: setting_value}
+
+        try:
+            response = self._make_request('PUT', endpoint, data=payload)
+
+            if response.status_code in [200, 204]:
+                logger.info(f"Successfully updated Gateway setting: {setting_name}")
+                # Return the response data if available, otherwise return the payload
+                if response.content:
+                    try:
+                        return response.json()
+                    except requests.exceptions.JSONDecodeError:
+                        return payload
+                return payload
+            else:
+                error_msg = f"Failed to update Gateway setting. Status: {response.status_code}"
+                try:
+                    error_data = response.json()
+                    error_msg += f", Error: {error_data}"
+                except requests.exceptions.JSONDecodeError:
+                    error_msg += f", Response: {response.text}"
+
+                raise GatewayAPIError(error_msg, response.status_code, response.json() if response.content else None)
+
+        except requests.RequestException as e:
+            raise GatewayAPIError(f"Failed to update Gateway setting: {str(e)}")
+
+    def get_gateway_setting(self, setting_name: str) -> Any:
+        """Get a Gateway setting value via the settings API.
+
+        Args:
+            setting_name: Name of the setting to retrieve
+
+        Returns:
+            Any: The value of the setting, or None if not found
+
+        Raises:
+            GatewayAPIError: If request fails
+        """
+        endpoint = '/api/gateway/v1/settings/all/'
+
+        try:
+            response = self._make_request('GET', endpoint)
+
+            if response.status_code == 200:
+                settings_data = response.json()
+                logger.info("Successfully retrieved Gateway settings")
+
+                # Return the specific setting value or None if not found
+                return settings_data.get(setting_name)
+            else:
+                error_msg = f"Failed to get Gateway settings. Status: {response.status_code}"
+                try:
+                    error_data = response.json()
+                    error_msg += f", Error: {error_data}"
+                except requests.exceptions.JSONDecodeError:
+                    error_msg += f", Response: {response.text}"
+
+                raise GatewayAPIError(error_msg, response.status_code, response.json() if response.content else None)
+
+        except requests.RequestException as e:
+            raise GatewayAPIError(f"Failed to get Gateway setting: {str(e)}")
+
+    def get_base_url(self) -> str:
+        """Get the base URL of the Gateway instance.
+
+        Returns:
+            str: The base URL of the Gateway instance
+        """
+        return self.base_url
+
     def close(self):
         """Close the session and clean up resources."""
         if self.session:

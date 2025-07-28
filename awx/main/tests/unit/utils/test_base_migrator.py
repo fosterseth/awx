@@ -869,3 +869,371 @@ class TestSocialAuthMapFunctions:
                 result = self.migrator.get_social_team_map(setting_name)
 
                 assert result == {'test_team': {'organization': 'test_org'}}
+
+
+class TestHandleLoginOverride:
+    """Tests for handle_login_override method."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.gateway_client = Mock()
+        self.command = Mock()
+        self.migrator = BaseAuthenticatorMigrator(self.gateway_client, self.command)
+
+        # Reset the class-level flag before each test
+        BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator = False
+
+    def test_handle_login_override_no_login_redirect_override(self):
+        """Test that method returns early when no login_redirect_override is provided."""
+        config = {}
+        valid_login_urls = ['/sso/login/github']
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should not call any gateway client methods
+        self.gateway_client.get_base_url.assert_not_called()
+        self.gateway_client.update_gateway_setting.assert_not_called()
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+
+    def test_handle_login_override_empty_login_redirect_override(self):
+        """Test that method returns early when login_redirect_override is empty."""
+        config = {'login_redirect_override': ''}
+        valid_login_urls = ['/sso/login/github']
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should not call any gateway client methods
+        self.gateway_client.get_base_url.assert_not_called()
+        self.gateway_client.update_gateway_setting.assert_not_called()
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+
+    def test_handle_login_override_no_url_match(self):
+        """Test that method returns early when login_redirect_override doesn't match valid URLs."""
+        config = {'login_redirect_override': 'https://localhost:3000/sso/login/saml'}
+        valid_login_urls = ['/sso/login/github', '/sso/login/azuread-oauth2']
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should not call any gateway client methods
+        self.gateway_client.get_base_url.assert_not_called()
+        self.gateway_client.update_gateway_setting.assert_not_called()
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+
+    def test_handle_login_override_no_gateway_authenticator(self):
+        """Test that method returns early when gateway_authenticator is missing."""
+        config = {'login_redirect_override': 'https://localhost:3000/sso/login/github'}
+        valid_login_urls = ['/sso/login/github']
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should not call any gateway client methods
+        self.gateway_client.get_base_url.assert_not_called()
+        self.gateway_client.update_gateway_setting.assert_not_called()
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+
+    def test_handle_login_override_empty_gateway_authenticator(self):
+        """Test that method returns early when gateway_authenticator is empty."""
+        config = {'login_redirect_override': 'https://localhost:3000/sso/login/github', 'gateway_authenticator': {}}
+        valid_login_urls = ['/sso/login/github']
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should not call any gateway client methods
+        self.gateway_client.get_base_url.assert_not_called()
+        self.gateway_client.update_gateway_setting.assert_not_called()
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+
+    def test_handle_login_override_no_sso_login_url(self):
+        """Test that method returns early when sso_login_url is missing."""
+        config = {'login_redirect_override': 'https://localhost:3000/sso/login/github', 'gateway_authenticator': {'id': 123}}
+        valid_login_urls = ['/sso/login/github']
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should not call any gateway client methods
+        self.gateway_client.get_base_url.assert_not_called()
+        self.gateway_client.update_gateway_setting.assert_not_called()
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+
+    def test_handle_login_override_empty_sso_login_url(self):
+        """Test that method returns early when sso_login_url is empty."""
+        config = {'login_redirect_override': 'https://localhost:3000/sso/login/github', 'gateway_authenticator': {'id': 123, 'sso_login_url': ''}}
+        valid_login_urls = ['/sso/login/github']
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should not call any gateway client methods
+        self.gateway_client.get_base_url.assert_not_called()
+        self.gateway_client.update_gateway_setting.assert_not_called()
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+
+    def test_handle_login_override_successful_update(self):
+        """Test successful LOGIN_REDIRECT_OVERRIDE update."""
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/github',
+            'gateway_authenticator': {'id': 123, 'sso_login_url': '/sso/auth/login/123/'},
+        }
+        valid_login_urls = ['/sso/login/github']
+
+        # Mock gateway client methods
+        self.gateway_client.get_base_url.return_value = 'https://gateway.example.com'
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Verify gateway client methods were called correctly
+        self.gateway_client.get_base_url.assert_called_once()
+        self.gateway_client.update_gateway_setting.assert_called_once_with('LOGIN_REDIRECT_OVERRIDE', 'https://gateway.example.com/sso/auth/login/123/')
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+
+    def test_handle_login_override_multiple_valid_urls_first_matches(self):
+        """Test that first matching URL in valid_login_urls is used."""
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/github-org',
+            'gateway_authenticator': {'id': 123, 'sso_login_url': '/sso/auth/login/123/'},
+        }
+        valid_login_urls = ['/sso/login/github-org', '/sso/login/github-team', '/sso/login/github']
+
+        # Mock gateway client methods
+        self.gateway_client.get_base_url.return_value = 'https://gateway.example.com'
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should still work since first URL matches
+        self.gateway_client.update_gateway_setting.assert_called_once_with('LOGIN_REDIRECT_OVERRIDE', 'https://gateway.example.com/sso/auth/login/123/')
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+
+    def test_handle_login_override_multiple_valid_urls_last_matches(self):
+        """Test that last matching URL in valid_login_urls is used."""
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/github',
+            'gateway_authenticator': {'id': 123, 'sso_login_url': '/sso/auth/login/123/'},
+        }
+        valid_login_urls = ['/sso/login/github-org', '/sso/login/github-team', '/sso/login/github']
+
+        # Mock gateway client methods
+        self.gateway_client.get_base_url.return_value = 'https://gateway.example.com'
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should work since last URL matches
+        self.gateway_client.update_gateway_setting.assert_called_once_with('LOGIN_REDIRECT_OVERRIDE', 'https://gateway.example.com/sso/auth/login/123/')
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+
+    def test_handle_login_override_partial_url_match(self):
+        """Test that partial URL matching works (using 'in' operator)."""
+        config = {
+            'login_redirect_override': 'https://controller.example.com/sso/login/azuread-oauth2/?next=%2Fdashboard',
+            'gateway_authenticator': {'id': 456, 'sso_login_url': '/auth/login/azuread/456/'},
+        }
+        valid_login_urls = ['/sso/login/azuread-oauth2']
+
+        # Mock gateway client methods
+        self.gateway_client.get_base_url.return_value = 'https://gateway.example.com:8080'
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should work since valid URL is contained in login_redirect_override
+        self.gateway_client.update_gateway_setting.assert_called_once_with(
+            'LOGIN_REDIRECT_OVERRIDE', 'https://gateway.example.com:8080/auth/login/azuread/456/?next=%2Fdashboard'
+        )
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+
+    def test_handle_login_override_saml_with_parameters(self):
+        """Test LOGIN_REDIRECT_OVERRIDE with SAML IDP parameters."""
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/saml/?idp=mycompany',
+            'gateway_authenticator': {'id': 789, 'sso_login_url': '/auth/login/saml/789/'},
+        }
+        valid_login_urls = ['/sso/login/saml/?idp=mycompany']
+
+        # Mock gateway client methods
+        self.gateway_client.get_base_url.return_value = 'https://gateway.local'
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should work with SAML parameter URLs
+        self.gateway_client.update_gateway_setting.assert_called_once_with(
+            'LOGIN_REDIRECT_OVERRIDE', 'https://gateway.local/auth/login/saml/789/?idp=mycompany'
+        )
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+
+    def test_handle_login_override_github_with_trailing_slash(self):
+        """Test LOGIN_REDIRECT_OVERRIDE with trailing slash."""
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/github-enterprise/',
+            'gateway_authenticator': {'id': 999, 'sso_login_url': '/auth/login/github/999/'},
+        }
+        valid_login_urls = ['/sso/login/github-enterprise', '/sso/login/github-enterprise/']
+
+        # Mock gateway client methods
+        self.gateway_client.get_base_url.return_value = 'https://gateway.internal'
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should work with trailing slash URLs
+        self.gateway_client.update_gateway_setting.assert_called_once_with('LOGIN_REDIRECT_OVERRIDE', 'https://gateway.internal/auth/login/github/999/')
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+
+    def test_handle_login_override_empty_valid_urls_list(self):
+        """Test that method returns early when valid_login_urls is empty."""
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/github',
+            'gateway_authenticator': {'id': 123, 'sso_login_url': '/sso/auth/login/123/'},
+        }
+        valid_login_urls = []
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should not call any gateway client methods
+        self.gateway_client.get_base_url.assert_not_called()
+        self.gateway_client.update_gateway_setting.assert_not_called()
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+
+    def test_handle_login_override_preserves_existing_flag_state(self):
+        """Test that method preserves flag state if it was already set."""
+        # Set flag to True initially
+        BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator = True
+
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/github',
+            'gateway_authenticator': {'id': 123, 'sso_login_url': '/sso/auth/login/123/'},
+        }
+        valid_login_urls = ['/sso/login/github']
+
+        # Mock gateway client methods
+        self.gateway_client.get_base_url.return_value = 'https://gateway.example.com'
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Flag should still be True
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+
+    def test_handle_login_override_writes_output_message(self):
+        """Test that method writes output message when updating."""
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/google-oauth2',
+            'gateway_authenticator': {'id': 555, 'sso_login_url': '/auth/login/google/555/'},
+        }
+        valid_login_urls = ['/sso/login/google-oauth2']
+
+        # Mock gateway client methods
+        self.gateway_client.get_base_url.return_value = 'https://gateway.test'
+
+        # Mock _write_output method
+        with patch.object(self.migrator, '_write_output') as mock_write_output:
+            self.migrator.handle_login_override(config, valid_login_urls)
+
+            # Verify output message was written
+            mock_write_output.assert_called_once_with('Updating LOGIN_REDIRECT_OVERRIDE to: https://gateway.test/auth/login/google/555/')
+
+    @pytest.mark.parametrize(
+        "login_redirect_override,valid_urls,expected_match",
+        [
+            # Test Azure AD variations
+            ('https://localhost:3000/sso/login/azuread-oauth2', ['/sso/login/azuread-oauth2'], True),
+            ('https://localhost:3000/sso/login/azuread-oauth2/', ['/sso/login/azuread-oauth2'], True),
+            ('https://controller.example.com/sso/login/azuread-oauth2?next=/home', ['/sso/login/azuread-oauth2'], True),
+            # Test Google OAuth2 variations
+            ('https://localhost:3000/sso/login/google-oauth2', ['/sso/login/google-oauth2'], True),
+            ('https://localhost:3000/sso/login/google-oauth2/', ['/sso/login/google-oauth2'], True),
+            # Test GitHub variations
+            ('https://localhost:3000/sso/login/github', ['/sso/login/github'], True),
+            ('https://localhost:3000/sso/login/github-org', ['/sso/login/github-org'], True),
+            ('https://localhost:3000/sso/login/github-team', ['/sso/login/github-team'], True),
+            ('https://localhost:3000/sso/login/github-enterprise', ['/sso/login/github-enterprise'], True),
+            # Test SAML variations
+            ('https://localhost:3000/sso/login/saml/?idp=company', ['/sso/login/saml/?idp=company'], True),
+            ('https://localhost:3000/sso/login/saml/?idp=test-org', ['/sso/login/saml/?idp=test-org'], True),
+            # Test non-matching cases
+            ('https://localhost:3000/sso/login/ldap', ['/sso/login/github'], False),
+            ('https://localhost:3000/sso/login/azuread-oauth2', ['/sso/login/google-oauth2'], False),
+            ('https://localhost:3000/sso/login/saml/?idp=wrong', ['/sso/login/saml/?idp=company'], False),
+            # Test multiple valid URLs
+            ('https://localhost:3000/sso/login/github-org', ['/sso/login/github', '/sso/login/github-org'], True),
+            ('https://localhost:3000/sso/login/github', ['/sso/login/github-org', '/sso/login/github'], True),
+            # Test improved URL parsing scenarios - better boundary detection
+            ('https://localhost:3000/sso/login/github-enterprise', ['/sso/login/github'], False),  # Should NOT match due to better parsing
+            ('https://localhost:3000/sso/login/saml/?idp=company&next=/home', ['/sso/login/saml/?idp=company'], True),
+            ('https://localhost:3000/sso/login/saml/?idp=company', ['/sso/login/saml/?idp=different'], False),
+            ('https://controller.example.com:8080/sso/login/azuread-oauth2/?next=/dashboard', ['/sso/login/azuread-oauth2'], True),
+            ('http://localhost/sso/login/github?state=abc123', ['/sso/login/github'], True),
+            # Test boundary detection edge cases
+            ('https://localhost:3000/sso/login/github/', ['/sso/login/github'], True),  # Trailing slash should match
+            ('https://localhost:3000/sso/login/github#section', ['/sso/login/github'], True),  # Fragment should match
+        ],
+    )
+    def test_handle_login_override_url_matching_variations(self, login_redirect_override, valid_urls, expected_match):
+        """Test various URL matching scenarios parametrically."""
+        config = {'login_redirect_override': login_redirect_override, 'gateway_authenticator': {'id': 123, 'sso_login_url': '/auth/login/test/123/'}}
+
+        # Mock gateway client methods
+        self.gateway_client.get_base_url.return_value = 'https://gateway.test'
+
+        self.migrator.handle_login_override(config, valid_urls)
+
+        if expected_match:
+            # Should call gateway methods when URL matches
+            self.gateway_client.get_base_url.assert_called_once()
+            self.gateway_client.update_gateway_setting.assert_called_once()
+            assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+        else:
+            # Should not call gateway methods when URL doesn't match
+            self.gateway_client.get_base_url.assert_not_called()
+            self.gateway_client.update_gateway_setting.assert_not_called()
+            assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+
+    def test_handle_login_override_improved_url_parsing(self):
+        """Test that improved URL parsing with proper path boundary detection prevents false positive matches."""
+        # This test demonstrates the improvement over simple string matching
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/github-enterprise',
+            'gateway_authenticator': {'id': 123, 'sso_login_url': '/auth/login/test/123/'},
+        }
+
+        # With the old simple string matching, this would incorrectly match
+        # because '/sso/login/github' is contained in '/sso/login/github-enterprise'
+        # But with proper URL parsing, it should NOT match
+        valid_login_urls = ['/sso/login/github']
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should NOT match due to improved parsing
+        self.gateway_client.get_base_url.assert_not_called()
+        self.gateway_client.update_gateway_setting.assert_not_called()
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+
+    def test_handle_login_override_query_parameter_handling(self):
+        """Test that query parameters are properly handled in URL matching."""
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/saml/?idp=mycompany&next=%2Fdashboard',
+            'gateway_authenticator': {'id': 456, 'sso_login_url': '/auth/login/saml/456/?idp=IdP'},
+        }
+
+        # Should match the SAML URL with the correct IDP parameter (boundary-aware matching)
+        valid_login_urls = ['/sso/login/saml/?idp=mycompany']
+
+        self.gateway_client.get_base_url.return_value = 'https://gateway.test'
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should match because the query parameter is properly contained with boundaries
+        self.gateway_client.get_base_url.assert_called_once()
+        self.gateway_client.update_gateway_setting.assert_called_once_with(
+            'LOGIN_REDIRECT_OVERRIDE', 'https://gateway.test/auth/login/saml/456/?idp=IdP&next=%2Fdashboard'
+        )
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+
+    def test_handle_login_override_different_query_parameters(self):
+        """Test that different query parameters don't match."""
+        config = {
+            'login_redirect_override': 'https://localhost:3000/sso/login/saml/?idp=company-a',
+            'gateway_authenticator': {'id': 456, 'sso_login_url': '/auth/login/saml/456/'},
+        }
+
+        # Should NOT match SAML URL with different IDP parameter
+        valid_login_urls = ['/sso/login/saml/?idp=company-b']
+
+        self.migrator.handle_login_override(config, valid_login_urls)
+
+        # Should NOT match because the query parameters are different
+        self.gateway_client.get_base_url.assert_not_called()
+        self.gateway_client.update_gateway_setting.assert_not_called()
+        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False

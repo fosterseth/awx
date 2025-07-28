@@ -14,26 +14,32 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
     def options_basic_auth_full_send(self):
         return {
             'basic_auth': True,
+            'skip_all_authenticators': False,
             'skip_oidc': False,
+            'skip_github': False,
             'skip_ldap': False,
             'skip_ad': False,
             'skip_saml': False,
             'skip_radius': False,
             'skip_tacacs': False,
             'skip_google': False,
+            'skip_settings': False,
             'force': False,
         }
 
-    def options_basic_auth_skip_all(self):
+    def options_basic_auth_skip_all_individual(self):
         return {
             'basic_auth': True,
+            'skip_all_authenticators': False,
             'skip_oidc': True,
+            'skip_github': True,
             'skip_ldap': True,
             'skip_ad': True,
             'skip_saml': True,
             'skip_radius': True,
             'skip_tacacs': True,
             'skip_google': True,
+            'skip_settings': True,
             'force': False,
         }
 
@@ -43,7 +49,7 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         return options
 
     def options_svc_token_skip_all(self):
-        options = self.options_basic_auth_skip_all()
+        options = self.options_basic_auth_skip_all_individual()
         options['basic_auth'] = False
         return options
 
@@ -58,6 +64,10 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         mappers_created=0,
         mappers_updated=0,
         mappers_failed=0,
+        settings_created=0,
+        settings_updated=0,
+        settings_unchanged=0,
+        settings_failed=0,
     ):
         """Helper method to create a mock migrator with specified return values."""
         mock_migrator = Mock()
@@ -81,14 +91,25 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
 
         expected_calls = [
             call('--basic-auth', action='store_true', help='Use HTTP Basic Authentication between Controller and Gateway'),
-            call('--skip-oidc', action='store_true', help='Skip importing GitHub and generic OIDC authenticators'),
+            call(
+                '--skip-all-authenticators',
+                action='store_true',
+                help='Skip importing all authenticators [GitHub, OIDC, SAML, Azure AD, LDAP, RADIUS, TACACS+, Google OAuth2]',
+            ),
+            call('--skip-oidc', action='store_true', help='Skip importing generic OIDC authenticators'),
+            call('--skip-github', action='store_true', help='Skip importing GitHub authenticator'),
             call('--skip-ldap', action='store_true', help='Skip importing LDAP authenticators'),
             call('--skip-ad', action='store_true', help='Skip importing Azure AD authenticator'),
             call('--skip-saml', action='store_true', help='Skip importing SAML authenticator'),
             call('--skip-radius', action='store_true', help='Skip importing RADIUS authenticator'),
             call('--skip-tacacs', action='store_true', help='Skip importing TACACS+ authenticator'),
             call('--skip-google', action='store_true', help='Skip importing Google OAuth2 authenticator'),
-            call('--force', action='store_true', help='Force migration even if configurations already exist'),
+            call('--skip-settings', action='store_true', help='Skip importing settings'),
+            call(
+                '--force',
+                action='store_true',
+                help='Force migration even if configurations already exist. Does not apply to skipped authenticators nor skipped settings.',
+            ),
         ]
 
         parser.add_argument.assert_has_calls(expected_calls, any_order=True)
@@ -113,6 +134,7 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         os.environ,
         {'GATEWAY_BASE_URL': 'https://gateway.example.com', 'GATEWAY_USER': 'testuser', 'GATEWAY_PASSWORD': 'testpass', 'GATEWAY_SKIP_VERIFY': 'true'},
     )
+    @patch('awx.main.management.commands.import_auth_config_to_gateway.SettingsMigrator')
     @patch.multiple(
         'awx.main.management.commands.import_auth_config_to_gateway',
         GitHubMigrator=DEFAULT,
@@ -122,10 +144,11 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         LDAPMigrator=DEFAULT,
         RADIUSMigrator=DEFAULT,
         TACACSMigrator=DEFAULT,
+        GoogleOAuth2Migrator=DEFAULT,
     )
     @patch('awx.main.management.commands.import_auth_config_to_gateway.GatewayClient')
     @patch('sys.stdout', new_callable=StringIO)
-    def test_handle_basic_auth_success(self, mock_stdout, mock_gateway_client, **mock_migrators):
+    def test_handle_basic_auth_success(self, mock_stdout, mock_gateway_client, mock_settings_migrator, **mock_migrators):
         """Test successful execution with basic auth."""
         # Mock gateway client context manager
         mock_client_instance = Mock()
@@ -134,6 +157,8 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
 
         for mock_migrator_class in mock_migrators.values():
             self.create_mock_migrator(mock_migrator_class, created=1, mappers_created=2)
+
+        self.create_mock_migrator(mock_settings_migrator, settings_created=1, settings_updated=0, settings_unchanged=2, settings_failed=0)
 
         with patch.object(self.command, 'stdout', mock_stdout):
             self.command.handle(**self.options_basic_auth_full_send())
@@ -147,12 +172,17 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         for mock_migrator in mock_migrators.values():
             mock_migrator.assert_called_once_with(mock_client_instance, self.command, force=False)
 
+        mock_settings_migrator.assert_called_once_with(mock_client_instance, self.command, force=False)
+
         # Verify output contains success messages
         output = mock_stdout.getvalue()
 
         self.assertIn('HTTP Basic Auth: true', output)
         self.assertIn('Successfully connected to Gateway', output)
         self.assertIn('Migration Summary', output)
+        self.assertIn('authenticators', output)
+        self.assertIn('mappers', output)
+        self.assertIn('settings', output)
 
     @patch('awx.main.management.commands.import_auth_config_to_gateway.create_api_client')
     @patch('awx.main.management.commands.import_auth_config_to_gateway.GatewayClientSVCToken')
@@ -211,10 +241,12 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         LDAPMigrator=DEFAULT,
         RADIUSMigrator=DEFAULT,
         TACACSMigrator=DEFAULT,
+        GoogleOAuth2Migrator=DEFAULT,
+        SettingsMigrator=DEFAULT,
     )
     @patch('awx.main.management.commands.import_auth_config_to_gateway.GatewayClient')
     @patch('sys.stdout', new_callable=StringIO)
-    def test_skip_flags_prevent_migrator_creation(self, mock_stdout, mock_gateway_client, **mock_migrators):
+    def test_skip_flags_prevent_authenticator_individual_and_settings_migration(self, mock_stdout, mock_gateway_client, **mock_migrators):
         """Test that skip flags prevent corresponding migrators from being created."""
 
         # Mock gateway client context manager
@@ -223,7 +255,7 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         mock_gateway_client.return_value.__exit__.return_value = None
 
         with patch.object(self.command, 'stdout', mock_stdout):
-            self.command.handle(**self.options_basic_auth_skip_all())
+            self.command.handle(**self.options_basic_auth_skip_all_individual())
 
         # Verify no migrators were created
         for mock_migrator in mock_migrators.values():
@@ -232,6 +264,46 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         # Verify warning message about no configurations
         output = mock_stdout.getvalue()
         self.assertIn('No authentication configurations found to migrate.', output)
+        self.assertIn('Settings migration will not execute.', output)
+        self.assertIn('NO MIGRATIONS WILL EXECUTE.', output)
+
+    @patch.dict(os.environ, {'GATEWAY_BASE_URL': 'https://gateway.example.com', 'GATEWAY_USER': 'testuser', 'GATEWAY_PASSWORD': 'testpass'})
+    @patch.multiple(
+        'awx.main.management.commands.import_auth_config_to_gateway',
+        GitHubMigrator=DEFAULT,
+        OIDCMigrator=DEFAULT,
+        SAMLMigrator=DEFAULT,
+        AzureADMigrator=DEFAULT,
+        LDAPMigrator=DEFAULT,
+        RADIUSMigrator=DEFAULT,
+        TACACSMigrator=DEFAULT,
+        GoogleOAuth2Migrator=DEFAULT,
+    )
+    @patch('awx.main.management.commands.import_auth_config_to_gateway.GatewayClient')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_skip_flags_prevent_authenticator_migration(self, mock_stdout, mock_gateway_client, **mock_migrators):
+        """Test that skip flags prevent corresponding migrators from being created."""
+
+        # Mock gateway client context manager
+        mock_client_instance = Mock()
+        mock_gateway_client.return_value.__enter__.return_value = mock_client_instance
+        mock_gateway_client.return_value.__exit__.return_value = None
+
+        options = self.options_basic_auth_full_send()
+        options['skip_all_authenticators'] = True
+
+        with patch.object(self.command, 'stdout', mock_stdout):
+            self.command.handle(**options)
+
+        # Verify no migrators were created
+        for mock_migrator in mock_migrators.values():
+            mock_migrator.assert_not_called()
+
+        # Verify warning message about no configurations
+        output = mock_stdout.getvalue()
+        self.assertIn('No authentication configurations found to migrate.', output)
+        self.assertNotIn('Settings migration will not execute.', output)
+        self.assertNotIn('NO MIGRATIONS WILL EXECUTE.', output)
 
     @patch.dict(os.environ, {'GATEWAY_BASE_URL': 'https://gateway.example.com', 'GATEWAY_USER': 'testuser', 'GATEWAY_PASSWORD': 'testpass'})
     @patch('awx.main.management.commands.import_auth_config_to_gateway.GatewayClient')
@@ -268,8 +340,9 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
     @patch.dict(os.environ, {'GATEWAY_BASE_URL': 'https://gateway.example.com', 'GATEWAY_USER': 'testuser', 'GATEWAY_PASSWORD': 'testpass'})
     @patch('awx.main.management.commands.import_auth_config_to_gateway.GatewayClient')
     @patch('awx.main.management.commands.import_auth_config_to_gateway.GitHubMigrator')
+    @patch('awx.main.management.commands.import_auth_config_to_gateway.SettingsMigrator')
     @patch('sys.stdout', new_callable=StringIO)
-    def test_force_flag_passed_to_migrators(self, mock_stdout, mock_github, mock_gateway_client):
+    def test_force_flag_passed_to_migrators(self, mock_stdout, mock_github, mock_settings_migrator, mock_gateway_client):
         """Test that force flag is properly passed to migrators."""
         # Mock gateway client context manager
         mock_client_instance = Mock()
@@ -278,16 +351,23 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
 
         # Mock migrator
         self.create_mock_migrator(mock_github, authenticator_type="GitHub", created=0, mappers_created=2)
+        self.create_mock_migrator(
+            mock_settings_migrator, authenticator_type="Settings", settings_created=0, settings_updated=2, settings_unchanged=0, settings_failed=0
+        )
 
-        options = self.options_basic_auth_skip_all()
+        options = self.options_basic_auth_skip_all_individual()
         options['force'] = True
-        options['skip_oidc'] = False
+        options['skip_github'] = False
+        options['skip_settings'] = False
 
         with patch.object(self.command, 'stdout', mock_stdout):
             self.command.handle(**options)
 
         # Verify migrator was created with force=True
         mock_github.assert_called_once_with(mock_client_instance, self.command, force=True)
+
+        # Verify settings migrator was created with force=True
+        mock_settings_migrator.assert_called_once_with(mock_client_instance, self.command, force=True)
 
     @patch('sys.stdout', new_callable=StringIO)
     def test_print_export_summary(self, mock_stdout):
@@ -314,6 +394,26 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         self.assertIn('Mappers created: 5', output)
         self.assertIn('Mappers updated: 2', output)
         self.assertIn('Mappers failed: 1', output)
+
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_print_export_summary_settings(self, mock_stdout):
+        """Test the _print_export_summary method."""
+        result = {
+            'settings_created': 2,
+            'settings_updated': 1,
+            'settings_unchanged': 3,
+            'settings_failed': 0,
+        }
+
+        with patch.object(self.command, 'stdout', mock_stdout):
+            self.command._print_export_summary('Settings', result)
+
+        output = mock_stdout.getvalue()
+        self.assertIn('--- Settings Export Summary ---', output)
+        self.assertIn('Settings created: 2', output)
+        self.assertIn('Settings updated: 1', output)
+        self.assertIn('Settings unchanged: 3', output)
+        self.assertIn('Settings failed: 0', output)
 
     @patch('sys.stdout', new_callable=StringIO)
     def test_print_export_summary_missing_keys(self, mock_stdout):
@@ -350,7 +450,7 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         self.create_mock_migrator(mock_github, authenticator_type="GitHub", created=1, mappers_created=2)
         self.create_mock_migrator(mock_oidc, authenticator_type="OIDC", created=0, updated=1, unchanged=1, mappers_created=1, mappers_updated=1)
 
-        options = self.options_basic_auth_skip_all()
+        options = self.options_basic_auth_skip_all_individual()
         options['skip_oidc'] = False
         options['skip_github'] = False
 
@@ -401,7 +501,7 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
                     mock_gateway_client.return_value.__exit__.return_value = None
 
                     with patch.object(self.command, 'stdout', mock_stdout):
-                        self.command.handle(**self.options_basic_auth_skip_all())
+                        self.command.handle(**self.options_basic_auth_skip_all_individual())
 
                     # Verify gateway client was called with correct skip_verify value
                     mock_gateway_client.assert_called_once_with(

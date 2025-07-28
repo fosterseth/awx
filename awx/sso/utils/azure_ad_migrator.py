@@ -36,6 +36,7 @@ class AzureADMigrator(BaseAuthenticatorMigrator):
         # If we have both key and secret, collect all settings
         org_map_value = getattr(settings, 'SOCIAL_AUTH_AZUREAD_OAUTH2_ORGANIZATION_MAP', None)
         team_map_value = getattr(settings, 'SOCIAL_AUTH_AZUREAD_OAUTH2_TEAM_MAP', None)
+        login_redirect_override = getattr(settings, "LOGIN_REDIRECT_OVERRIDE", None)
 
         # Convert GitHub org and team mappings from AWX to the Gateway format
         # Start with order 1 and maintain sequence across both org and team mappers
@@ -65,6 +66,7 @@ class AzureADMigrator(BaseAuthenticatorMigrator):
                 },
                 'org_mappers': org_mappers,
                 'team_mappers': team_mappers,
+                'login_redirect_override': login_redirect_override,
             }
         ]
 
@@ -85,4 +87,10 @@ class AzureADMigrator(BaseAuthenticatorMigrator):
         ignore_keys = ["CALLBACK_URL", "GROUPS_CLAIM"]
 
         # Submit the authenticator (create or update as needed)
-        return self.submit_authenticator(gateway_config, ignore_keys, config)
+        result = self.submit_authenticator(gateway_config, ignore_keys, config)
+
+        # Handle LOGIN_REDIRECT_OVERRIDE if applicable
+        valid_login_urls = ['/sso/login/azuread-oauth2']
+        self.handle_login_override(config, valid_login_urls)
+
+        return result

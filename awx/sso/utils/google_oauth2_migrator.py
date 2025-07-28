@@ -37,10 +37,13 @@ class GoogleOAuth2Migrator(BaseAuthenticatorMigrator):
             'SOCIAL_AUTH_GOOGLE_OAUTH2_SCOPE': settings.SOCIAL_AUTH_GOOGLE_OAUTH2_SCOPE,
         }
 
+        login_redirect_override = getattr(settings, "LOGIN_REDIRECT_OVERRIDE", None)
+
         return [
             {
                 "category": self.get_authenticator_type(),
                 "settings": config_data,
+                "login_redirect_override": login_redirect_override,
             }
         ]
 
@@ -90,4 +93,10 @@ class GoogleOAuth2Migrator(BaseAuthenticatorMigrator):
             else:
                 ignore_keys.append(key)
 
-        return self.submit_authenticator(gateway_config, ignore_keys, config)
+        result = self.submit_authenticator(gateway_config, ignore_keys, config)
+
+        # Handle LOGIN_REDIRECT_OVERRIDE if applicable
+        valid_login_urls = ['/sso/login/google-oauth2']
+        self.handle_login_override(config, valid_login_urls)
+
+        return result

@@ -4,6 +4,7 @@ Base authenticator migrator class.
 This module defines the contract that all specific authenticator migrators must follow.
 """
 
+from urllib.parse import urlparse, parse_qs, urlencode
 from django.conf import settings
 from awx.main.utils.gateway_client import GatewayAPIError
 
@@ -13,6 +14,10 @@ class BaseAuthenticatorMigrator:
     Base class for all authenticator migrators.
     Defines the contract that all specific authenticator migrators must follow.
     """
+
+    KEYS_TO_PRESERVE = ['idp']
+    # Class-level flag to track if LOGIN_REDIRECT_OVERRIDE was set by any migrator
+    login_redirect_override_set_by_migrator = False
 
     def __init__(self, gateway_client=None, command=None, force=False):
         """
@@ -88,6 +93,7 @@ class BaseAuthenticatorMigrator:
                 mappers_updated += mapper_result['updated']
                 mappers_failed += mapper_result['failed']
 
+        # Authenticators don't have settings, so settings counts are always 0
         return {
             'created': len(created_authenticators),
             'updated': len(updated_authenticators),
@@ -96,6 +102,10 @@ class BaseAuthenticatorMigrator:
             'mappers_created': mappers_created,
             'mappers_updated': mappers_updated,
             'mappers_failed': mappers_failed,
+            'settings_created': 0,
+            'settings_updated': 0,
+            'settings_unchanged': 0,
+            'settings_failed': 0,
         }
 
     def get_controller_config(self):
@@ -552,6 +562,101 @@ class BaseAuthenticatorMigrator:
         # Fall back to global setting
         global_map = getattr(settings, 'SOCIAL_AUTH_TEAM_MAP', {})
         return global_map
+
+    def handle_login_override(self, config, valid_login_urls):
+        """
+        Handle LOGIN_REDIRECT_OVERRIDE setting for this authenticator.
+
+        This method checks if the login_redirect_override from the config matches
+        any of the provided valid_login_urls. If it matches, it updates the
+        LOGIN_REDIRECT_OVERRIDE setting in Gateway with the new authenticator's
+        URL and sets the class flag to indicate it was handled.
+
+        Args:
+            config: Configuration dictionary containing:
+                - login_redirect_override: The current LOGIN_REDIRECT_OVERRIDE value
+                - gateway_authenticator: The created/updated authenticator info
+            valid_login_urls: List of URL patterns to match against
+        """
+        login_redirect_override = config.get('login_redirect_override')
+        if not login_redirect_override:
+            return
+
+        # Check if the login_redirect_override matches any of the provided valid URLs
+        url_matches = False
+        parsed_redirect = urlparse(login_redirect_override)
+        self.redirect_query_dict = parse_qs(parsed_redirect.query, keep_blank_values=True) if parsed_redirect.query else {}
+
+        for valid_url in valid_login_urls:
+            parsed_valid = urlparse(valid_url)
+
+            # Compare path: redirect path should match or contain the valid path at proper boundaries
+            if parsed_redirect.path == parsed_valid.path:
+                path_matches = True
+            elif parsed_redirect.path.startswith(parsed_valid.path):
+                # Ensure the match is at a path boundary (followed by '/' or end of string)
+                next_char_pos = len(parsed_valid.path)
+                if next_char_pos >= len(parsed_redirect.path) or parsed_redirect.path[next_char_pos] in ['/', '?']:
+                    path_matches = True
+                else:
+                    path_matches = False
+            else:
+                path_matches = False
+
+            # Compare query: if valid URL has query params, they should be present in redirect URL
+            query_matches = True
+            if parsed_valid.query:
+                # Parse query parameters for both URLs
+                valid_params = parse_qs(parsed_valid.query, keep_blank_values=True)
+
+                # All valid URL query params must be present in redirect URL with same values
+                query_matches = all(param in self.redirect_query_dict and self.redirect_query_dict[param] == values for param, values in valid_params.items())
+
+            if path_matches and query_matches:
+                url_matches = True
+                break
+
+        if not url_matches:
+            return
+
+        # Extract the created authenticator from config
+        gateway_authenticator = config.get('gateway_authenticator')
+        if not gateway_authenticator:
+            return
+
+        sso_login_url = gateway_authenticator.get('sso_login_url')
+        if not sso_login_url:
+            return
+
+        # Update LOGIN_REDIRECT_OVERRIDE with the new Gateway URL
+        gateway_base_url = self.gateway_client.get_base_url()
+        parsed_sso = urlparse(sso_login_url)
+        parsed_gw = urlparse(gateway_base_url)
+        updated_query = self._updated_query_string(parsed_sso)
+        complete_url = parsed_redirect._replace(scheme=parsed_gw.scheme, path=parsed_sso.path, netloc=parsed_gw.netloc, query=updated_query).geturl()
+        self._write_output(f'Updating LOGIN_REDIRECT_OVERRIDE to: {complete_url}')
+        self.gateway_client.update_gateway_setting('LOGIN_REDIRECT_OVERRIDE', complete_url)
+
+        # Set the class-level flag to indicate LOGIN_REDIRECT_OVERRIDE was handled by a migrator
+        BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator = True
+
+    def _updated_query_string(self, parsed_sso):
+        if parsed_sso.query:
+            parsed_sso_dict = parse_qs(parsed_sso.query, keep_blank_values=True)
+        else:
+            parsed_sso_dict = {}
+
+        result = {}
+        for k, v in self.redirect_query_dict.items():
+            if k in self.KEYS_TO_PRESERVE and k in parsed_sso_dict:
+                v = parsed_sso_dict[k]
+
+            if isinstance(v, list) and len(v) == 1:
+                result[k] = v[0]
+            else:
+                result[k] = v
+
+        return urlencode(result, doseq=True) if result else ""
 
     def _write_output(self, message, style=None):
         """Write output message if command is available."""

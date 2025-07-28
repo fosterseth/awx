@@ -9,6 +9,7 @@ from awx.sso.utils.ldap_migrator import LDAPMigrator
 from awx.sso.utils.oidc_migrator import OIDCMigrator
 from awx.sso.utils.saml_migrator import SAMLMigrator
 from awx.sso.utils.radius_migrator import RADIUSMigrator
+from awx.sso.utils.settings_migrator import SettingsMigrator
 from awx.sso.utils.tacacs_migrator import TACACSMigrator
 from awx.sso.utils.google_oauth2_migrator import GoogleOAuth2Migrator
 from awx.main.utils.gateway_client import GatewayClient, GatewayAPIError
@@ -21,14 +22,25 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--basic-auth', action='store_true', help='Use HTTP Basic Authentication between Controller and Gateway')
-        parser.add_argument('--skip-oidc', action='store_true', help='Skip importing GitHub and generic OIDC authenticators')
+        parser.add_argument(
+            '--skip-all-authenticators',
+            action='store_true',
+            help='Skip importing all authenticators [GitHub, OIDC, SAML, Azure AD, LDAP, RADIUS, TACACS+, Google OAuth2]',
+        )
+        parser.add_argument('--skip-oidc', action='store_true', help='Skip importing generic OIDC authenticators')
+        parser.add_argument('--skip-github', action='store_true', help='Skip importing GitHub authenticator')
         parser.add_argument('--skip-ldap', action='store_true', help='Skip importing LDAP authenticators')
         parser.add_argument('--skip-ad', action='store_true', help='Skip importing Azure AD authenticator')
         parser.add_argument('--skip-saml', action='store_true', help='Skip importing SAML authenticator')
         parser.add_argument('--skip-radius', action='store_true', help='Skip importing RADIUS authenticator')
         parser.add_argument('--skip-tacacs', action='store_true', help='Skip importing TACACS+ authenticator')
         parser.add_argument('--skip-google', action='store_true', help='Skip importing Google OAuth2 authenticator')
-        parser.add_argument('--force', action='store_true', help='Force migration even if configurations already exist')
+        parser.add_argument('--skip-settings', action='store_true', help='Skip importing settings')
+        parser.add_argument(
+            '--force',
+            action='store_true',
+            help='Force migration even if configurations already exist. Does not apply to skipped authenticators nor skipped settings.',
+        )
 
     def handle(self, *args, **options):
         # Read Gateway connection parameters from environment variables
@@ -37,13 +49,16 @@ class Command(BaseCommand):
         gateway_password = os.getenv('GATEWAY_PASSWORD')
         gateway_skip_verify = os.getenv('GATEWAY_SKIP_VERIFY', '').lower() in ('true', '1', 'yes', 'on')
 
+        skip_all_authenticators = options['skip_all_authenticators']
         skip_oidc = options['skip_oidc']
+        skip_github = options['skip_github']
         skip_ldap = options['skip_ldap']
         skip_ad = options['skip_ad']
         skip_saml = options['skip_saml']
         skip_radius = options['skip_radius']
         skip_tacacs = options['skip_tacacs']
         skip_google = options['skip_google']
+        skip_settings = options['skip_settings']
         force = options['force']
         basic_auth = options['basic_auth']
 
@@ -107,27 +122,38 @@ class Command(BaseCommand):
 
                 # Initialize migrators
                 migrators = []
-                if not skip_oidc:
-                    migrators.append(GitHubMigrator(gateway_client, self, force=force))
-                    migrators.append(OIDCMigrator(gateway_client, self, force=force))
+                if not skip_all_authenticators:
+                    if not skip_oidc:
+                        migrators.append(OIDCMigrator(gateway_client, self, force=force))
 
-                if not skip_saml:
-                    migrators.append(SAMLMigrator(gateway_client, self, force=force))
+                    if not skip_github:
+                        migrators.append(GitHubMigrator(gateway_client, self, force=force))
 
-                if not skip_ad:
-                    migrators.append(AzureADMigrator(gateway_client, self, force=force))
+                    if not skip_saml:
+                        migrators.append(SAMLMigrator(gateway_client, self, force=force))
 
-                if not skip_ldap:
-                    migrators.append(LDAPMigrator(gateway_client, self, force=force))
+                    if not skip_ad:
+                        migrators.append(AzureADMigrator(gateway_client, self, force=force))
 
-                if not skip_radius:
-                    migrators.append(RADIUSMigrator(gateway_client, self, force=force))
+                    if not skip_ldap:
+                        migrators.append(LDAPMigrator(gateway_client, self, force=force))
 
-                if not skip_tacacs:
-                    migrators.append(TACACSMigrator(gateway_client, self, force=force))
+                    if not skip_radius:
+                        migrators.append(RADIUSMigrator(gateway_client, self, force=force))
 
-                if not skip_google:
-                    migrators.append(GoogleOAuth2Migrator(gateway_client, self, force=force))
+                    if not skip_tacacs:
+                        migrators.append(TACACSMigrator(gateway_client, self, force=force))
+
+                    if not skip_google:
+                        migrators.append(GoogleOAuth2Migrator(gateway_client, self, force=force))
+
+                if not migrators:
+                    self.stdout.write(self.style.WARNING('No authentication configurations found to migrate.'))
+
+                if not skip_settings:
+                    migrators.append(SettingsMigrator(gateway_client, self, force=force))
+                else:
+                    self.stdout.write(self.style.WARNING('Settings migration will not execute.'))
 
                 # Run migrations
                 total_results = {
@@ -138,10 +164,14 @@ class Command(BaseCommand):
                     'mappers_created': 0,
                     'mappers_updated': 0,
                     'mappers_failed': 0,
+                    'settings_created': 0,
+                    'settings_updated': 0,
+                    'settings_unchanged': 0,
+                    'settings_failed': 0,
                 }
 
                 if not migrators:
-                    self.stdout.write(self.style.WARNING('No authentication configurations found to migrate.'))
+                    self.stdout.write(self.style.WARNING('NO MIGRATIONS WILL EXECUTE.'))
                 else:
                     for migrator in migrators:
                         self.stdout.write(self.style.SUCCESS(f'\n=== Migrating {migrator.get_authenticator_type()} Configurations ==='))
@@ -161,6 +191,10 @@ class Command(BaseCommand):
                     self.stdout.write(f'Total mappers created: {total_results["mappers_created"]}')
                     self.stdout.write(f'Total mappers updated: {total_results["mappers_updated"]}')
                     self.stdout.write(f'Total mappers failed: {total_results["mappers_failed"]}')
+                    self.stdout.write(f'Total settings created: {total_results["settings_created"]}')
+                    self.stdout.write(f'Total settings updated: {total_results["settings_updated"]}')
+                    self.stdout.write(f'Total settings unchanged: {total_results["settings_unchanged"]}')
+                    self.stdout.write(f'Total settings failed: {total_results["settings_failed"]}')
 
         except GatewayAPIError as e:
             self.stdout.write(self.style.ERROR(f'Gateway API Error: {e.message}'))
@@ -176,10 +210,18 @@ class Command(BaseCommand):
     def _print_export_summary(self, config_type, result):
         """Print a summary of the export results."""
         self.stdout.write(f'\n--- {config_type} Export Summary ---')
-        self.stdout.write(f'Authenticators created: {result.get("created", 0)}')
-        self.stdout.write(f'Authenticators updated: {result.get("updated", 0)}')
-        self.stdout.write(f'Authenticators unchanged: {result.get("unchanged", 0)}')
-        self.stdout.write(f'Authenticators failed: {result.get("failed", 0)}')
-        self.stdout.write(f'Mappers created: {result.get("mappers_created", 0)}')
-        self.stdout.write(f'Mappers updated: {result.get("mappers_updated", 0)}')
-        self.stdout.write(f'Mappers failed: {result.get("mappers_failed", 0)}')
+
+        if config_type in ['GitHub', 'OIDC', 'SAML', 'Azure AD', 'LDAP', 'RADIUS', 'TACACS+', 'Google OAuth2']:
+            self.stdout.write(f'Authenticators created: {result.get("created", 0)}')
+            self.stdout.write(f'Authenticators updated: {result.get("updated", 0)}')
+            self.stdout.write(f'Authenticators unchanged: {result.get("unchanged", 0)}')
+            self.stdout.write(f'Authenticators failed: {result.get("failed", 0)}')
+            self.stdout.write(f'Mappers created: {result.get("mappers_created", 0)}')
+            self.stdout.write(f'Mappers updated: {result.get("mappers_updated", 0)}')
+            self.stdout.write(f'Mappers failed: {result.get("mappers_failed", 0)}')
+
+        if config_type == 'Settings':
+            self.stdout.write(f'Settings created: {result.get("settings_created", 0)}')
+            self.stdout.write(f'Settings updated: {result.get("settings_updated", 0)}')
+            self.stdout.write(f'Settings unchanged: {result.get("settings_unchanged", 0)}')
+            self.stdout.write(f'Settings failed: {result.get("settings_failed", 0)}')

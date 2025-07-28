@@ -29,6 +29,7 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
             list: List of configured GitHub authentication providers with their settings
         """
         github_categories = ['github', 'github-org', 'github-team', 'github-enterprise', 'github-enterprise-org', 'github-enterprise-team']
+        login_redirect_override = getattr(settings, "LOGIN_REDIRECT_OVERRIDE", None)
 
         found_configs = []
 
@@ -91,7 +92,15 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
                     org_mappers, next_order = org_map_to_gateway_format(org_map_value, start_order=1)
                     team_mappers, _ = team_map_to_gateway_format(team_map_value, start_order=next_order)
 
-                    found_configs.append({'category': category, 'settings': config_data, 'org_mappers': org_mappers, 'team_mappers': team_mappers})
+                    found_configs.append(
+                        {
+                            'category': category,
+                            'settings': config_data,
+                            'org_mappers': org_mappers,
+                            'team_mappers': team_mappers,
+                            'login_redirect_override': login_redirect_override,
+                        }
+                    )
 
             except Exception as e:
                 raise Exception(f'Could not retrieve {category} settings: {str(e)}')
@@ -165,7 +174,13 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
         ignore_keys = ['CALLBACK_URL', 'SCOPE']
 
         # Submit the authenticator (create or update as needed)
-        return self.submit_authenticator(gateway_config, ignore_keys, config)
+        result = self.submit_authenticator(gateway_config, ignore_keys, config)
+
+        # Handle LOGIN_REDIRECT_OVERRIDE if applicable
+        valid_login_urls = [f'/sso/login/{category}', f'/sso/login/{category}/']
+        self.handle_login_override(config, valid_login_urls)
+
+        return result
 
     def _build_additional_config(self, category, settings):
         """Build additional configuration for specific authenticator types."""

@@ -86,6 +86,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
         saml_team_attr = getattr(settings, "SOCIAL_AUTH_SAML_TEAM_ATTR", {})
         org_attr = getattr(settings, "SOCIAL_AUTH_SAML_ORGANIZATION_ATTR", {})
         user_flags_by_attr = getattr(settings, "SOCIAL_AUTH_SAML_USER_FLAGS_BY_ATTR", {})
+        login_redirect_override = getattr(settings, "LOGIN_REDIRECT_OVERRIDE", None)
 
         org_mappers, self.next_order = org_map_to_gateway_format(org_map_value, start_order=self.next_order)
         self.team_mappers, self.next_order = team_map_to_gateway_format(team_map_value, start_order=self.next_order)
@@ -135,6 +136,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
                     "settings": config_data,
                     "org_mappers": org_mappers,
                     "team_mappers": self.team_mappers,
+                    "login_redirect_override": login_redirect_override,
                 }
             )
         return found_configs
@@ -147,7 +149,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
 
         # Generate authenticator name and slug
         authenticator_name = f"AWX-{category.replace('-', '_').title()}-{name}"
-        authenticator_slug = self._generate_authenticator_slug("saml", category)
+        authenticator_slug = self._generate_authenticator_slug("saml", name)
 
         self._write_output(f"\n--- Processing {category} authenticator ---")
         self._write_output(f"Name: {authenticator_name}")
@@ -169,7 +171,13 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
         ignore_keys = ["CALLBACK_URL", "SP_PRIVATE_KEY"]
 
         # Submit the authenticator (create or update as needed)
-        return self.submit_authenticator(gateway_config, ignore_keys, config)
+        result = self.submit_authenticator(gateway_config, ignore_keys, config)
+
+        # Handle LOGIN_REDIRECT_OVERRIDE if applicable
+        valid_login_urls = [f'/sso/login/saml/?idp={name}', f'/sso/login/saml/?idp={name}/']
+        self.handle_login_override(config, valid_login_urls)
+
+        return result
 
     def _team_attr_to_gateway_format(self, saml_team_attr):
         saml_attr = saml_team_attr.get("saml_attr")
