@@ -96,10 +96,20 @@ class SettingsMigrator(BaseAuthenticatorMigrator):
         setting_value = config['setting_value']
 
         self._write_output(f'\n--- Migrating setting: {setting_name} ---')
-        self._write_output(f'New value: {setting_value}')
 
         try:
             gateway_setting_name = self._convert_setting_name(setting_name)
+
+            # Get current gateway setting value to check if update is needed
+            current_gateway_value = self.gateway_client.get_gateway_setting(gateway_setting_name)
+
+            # Compare current gateway value with controller value
+            if current_gateway_value == setting_value:
+                self._write_output(f'↷ Setting unchanged: {setting_name} (value already matches)', 'warning')
+                return {'success': True, 'action': 'skipped', 'error': None}
+
+            self._write_output(f'Current value: {current_gateway_value}')
+            self._write_output(f'New value: {setting_value}')
 
             # Use the new update_gateway_setting method
             self.gateway_client.update_gateway_setting(gateway_setting_name, setting_value)

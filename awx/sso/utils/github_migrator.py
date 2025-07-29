@@ -124,7 +124,7 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
 
         if not key_value or not secret_value:
             self._write_output(f'Skipping {category}: missing OAuth2 credentials', 'warning')
-            return False
+            return {'success': False, 'action': 'skipped', 'error': 'Missing OAuth2 credentials'}
 
         # Generate authenticator name and slug
         authenticator_name = category
@@ -143,7 +143,7 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
         authenticator_type = type_mapping.get(category)
         if not authenticator_type:
             self._write_output(f'Unknown category {category}, skipping', 'warning')
-            return False
+            return {'success': False, 'action': 'skipped', 'error': f'Unknown category {category}'}
 
         self._write_output(f'\n--- Processing {category} authenticator ---')
         self._write_output(f'Name: {authenticator_name}')
