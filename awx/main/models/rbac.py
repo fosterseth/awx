@@ -27,6 +27,8 @@ from django.conf import settings
 
 # Ansible_base app
 from ansible_base.rbac.models import RoleDefinition, RoleUserAssignment, RoleTeamAssignment
+from ansible_base.rbac.sync import maybe_reverse_sync_assignment, maybe_reverse_sync_unassignment
+from ansible_base.rbac import permission_registry
 from ansible_base.lib.utils.models import get_type_for_model
 
 # AWX
@@ -562,7 +564,7 @@ def get_role_definition(role):
     rd_name = f'{model_print} {action_name.title()} Compat'
     perm_list = get_role_codenames(role)
     defaults = {
-        'content_type_id': role.content_type_id,
+        'content_type': permission_registry.content_type_model.objects.get_by_natural_key(role.content_type.app_label, role.content_type.model),
         'description': f'Has {action_name.title()} permission to {model_print} for backwards API compatibility',
     }
 
@@ -614,12 +616,14 @@ def get_role_from_object_role(object_role):
     return getattr(object_role.content_object, role_name)
 
 
-def give_or_remove_permission(role, actor, giving=True):
+def give_or_remove_permission(role, actor, giving=True, rd=None):
     obj = role.content_object
     if obj is None:
         return
-    rd = get_role_definition(role)
-    rd.give_or_remove_permission(actor, obj, giving=giving)
+    if not rd:
+        rd = get_role_definition(role)
+    assignment = rd.give_or_remove_permission(actor, obj, giving=giving)
+    return assignment
 
 
 class SyncEnabled(threading.local):
@@ -671,7 +675,14 @@ def sync_members_to_new_rbac(instance, action, model, pk_set, reverse, **kwargs)
             role = Role.objects.get(pk=user_or_role_id)
         else:
             user = get_user_model().objects.get(pk=user_or_role_id)
-        give_or_remove_permission(role, user, giving=is_giving)
+        rd = get_role_definition(role)
+        assignment = give_or_remove_permission(role, user, giving=is_giving, rd=rd)
+
+        # sync to resource server
+        if is_giving:
+            maybe_reverse_sync_assignment(assignment)
+        else:
+            maybe_reverse_sync_unassignment(rd, user, role.content_object)
 
 
 def sync_parents_to_new_rbac(instance, action, model, pk_set, reverse, **kwargs):
@@ -714,7 +725,14 @@ def sync_parents_to_new_rbac(instance, action, model, pk_set, reverse, **kwargs)
             from awx.main.models.organization import Team
 
             team = Team.objects.get(pk=parent_role.object_id)
-            give_or_remove_permission(child_role, team, giving=is_giving)
+            rd = get_role_definition(child_role)
+            assignment = give_or_remove_permission(child_role, team, giving=is_giving, rd=rd)
+
+            # sync to resource server
+            if is_giving:
+                maybe_reverse_sync_assignment(assignment)
+            else:
+                maybe_reverse_sync_unassignment(rd, team, child_role.content_object)
 
 
 ROLE_DEFINITION_TO_ROLE_FIELD = {

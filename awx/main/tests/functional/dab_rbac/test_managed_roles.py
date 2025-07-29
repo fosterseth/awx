@@ -16,6 +16,14 @@ def test_roles_to_not_create(setup_managed_roles):
 
 
 @pytest.mark.django_db
+def test_org_admin_role(setup_managed_roles):
+    rd = RoleDefinition.objects.get(name='Organization Admin')
+    codenames = list(rd.permissions.values_list('codename', flat=True))
+    assert 'view_inventory' in codenames
+    assert 'change_inventory' in codenames
+
+
+@pytest.mark.django_db
 def test_project_update_role(setup_managed_roles):
     """Role to allow updating a project on the object-level should exist"""
     assert RoleDefinition.objects.filter(name='Project Update').count() == 1
