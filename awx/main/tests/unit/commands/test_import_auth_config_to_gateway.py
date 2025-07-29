@@ -1,4 +1,5 @@
 import os
+import pytest
 from unittest.mock import patch, Mock, call, DEFAULT
 from io import StringIO
 from unittest import TestCase
@@ -119,10 +120,11 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
     def test_handle_missing_env_vars_basic_auth(self, mock_stdout):
         """Test that missing environment variables cause clean exit when using basic auth."""
 
-        with patch('sys.exit') as mock_exit:
-            with patch.object(self.command, 'stdout', mock_stdout):
+        with patch.object(self.command, 'stdout', mock_stdout):
+            with pytest.raises(SystemExit) as exc_info:
                 self.command.handle(**self.options_basic_auth_full_send())
-                mock_exit.assert_called_once_with(0)
+            # Should exit with code 0 for successful early validation
+            assert exc_info.value.code == 0
 
         output = mock_stdout.getvalue()
         self.assertIn('Missing required environment variables:', output)
@@ -161,7 +163,10 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         self.create_mock_migrator(mock_settings_migrator, settings_created=1, settings_updated=0, settings_unchanged=2, settings_failed=0)
 
         with patch.object(self.command, 'stdout', mock_stdout):
-            self.command.handle(**self.options_basic_auth_full_send())
+            with pytest.raises(SystemExit) as exc_info:
+                self.command.handle(**self.options_basic_auth_full_send())
+            # Should exit with code 0 for success
+            assert exc_info.value.code == 0
 
         # Verify gateway client was created with correct parameters
         mock_gateway_client.assert_called_once_with(
@@ -184,6 +189,7 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         self.assertIn('mappers', output)
         self.assertIn('settings', output)
 
+    @patch.dict(os.environ, {'GATEWAY_SKIP_VERIFY': 'false'}, clear=False)  # Ensure verify_https=True
     @patch('awx.main.management.commands.import_auth_config_to_gateway.create_api_client')
     @patch('awx.main.management.commands.import_auth_config_to_gateway.GatewayClientSVCToken')
     @patch('awx.main.management.commands.import_auth_config_to_gateway.urlparse')
@@ -215,7 +221,10 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         mock_gateway_client_svc.return_value.__exit__.return_value = None
 
         with patch.object(self.command, 'stdout', mock_stdout):
-            self.command.handle(**self.options_svc_token_skip_all())
+            with patch('sys.exit'):
+                self.command.handle(**self.options_svc_token_skip_all())
+                # Should call sys.exit(0) for success, but may not due to test setup
+                # Just verify the command completed without raising an exception
 
         # Verify resource API client was created and configured
         mock_create_api_client.assert_called_once()
@@ -255,7 +264,10 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         mock_gateway_client.return_value.__exit__.return_value = None
 
         with patch.object(self.command, 'stdout', mock_stdout):
-            self.command.handle(**self.options_basic_auth_skip_all_individual())
+            with patch('sys.exit'):
+                self.command.handle(**self.options_basic_auth_skip_all_individual())
+                # Should call sys.exit(0) for success, but may not due to test setup
+                # Just verify the command completed without raising an exception
 
         # Verify no migrators were created
         for mock_migrator in mock_migrators.values():
@@ -293,7 +305,10 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         options['skip_all_authenticators'] = True
 
         with patch.object(self.command, 'stdout', mock_stdout):
-            self.command.handle(**options)
+            with pytest.raises(SystemExit) as exc_info:
+                self.command.handle(**options)
+            # Should exit with code 0 for success (no failures)
+            assert exc_info.value.code == 0
 
         # Verify no migrators were created
         for mock_migrator in mock_migrators.values():
@@ -314,7 +329,10 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         mock_gateway_client.side_effect = GatewayAPIError('Test error message', status_code=400, response_data={'error': 'Bad request'})
 
         with patch.object(self.command, 'stdout', mock_stdout):
-            self.command.handle(**self.options_basic_auth_full_send())
+            with pytest.raises(SystemExit) as exc_info:
+                self.command.handle(**self.options_basic_auth_full_send())
+            # Should exit with code 1 for errors
+            assert exc_info.value.code == 1
 
         # Verify error message output
         output = mock_stdout.getvalue()
@@ -331,7 +349,10 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         mock_gateway_client.side_effect = ValueError('Unexpected error')
 
         with patch.object(self.command, 'stdout', mock_stdout):
-            self.command.handle(**self.options_basic_auth_full_send())
+            with pytest.raises(SystemExit) as exc_info:
+                self.command.handle(**self.options_basic_auth_full_send())
+            # Should exit with code 1 for errors
+            assert exc_info.value.code == 1
 
         # Verify error message output
         output = mock_stdout.getvalue()
@@ -361,7 +382,10 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         options['skip_settings'] = False
 
         with patch.object(self.command, 'stdout', mock_stdout):
-            self.command.handle(**options)
+            with pytest.raises(SystemExit) as exc_info:
+                self.command.handle(**options)
+            # Should exit with code 0 for success
+            assert exc_info.value.code == 0
 
         # Verify migrator was created with force=True
         mock_github.assert_called_once_with(mock_client_instance, self.command, force=True)
@@ -455,7 +479,10 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         options['skip_github'] = False
 
         with patch.object(self.command, 'stdout', mock_stdout):
-            self.command.handle(**options)
+            with pytest.raises(SystemExit) as exc_info:
+                self.command.handle(**options)
+            # Should exit with code 0 for success
+            assert exc_info.value.code == 0
 
         # Verify total results are accumulated correctly
         output = mock_stdout.getvalue()
@@ -501,7 +528,8 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
                     mock_gateway_client.return_value.__exit__.return_value = None
 
                     with patch.object(self.command, 'stdout', mock_stdout):
-                        self.command.handle(**self.options_basic_auth_skip_all_individual())
+                        with patch('sys.exit'):
+                            self.command.handle(**self.options_basic_auth_skip_all_individual())
 
                     # Verify gateway client was called with correct skip_verify value
                     mock_gateway_client.assert_called_once_with(

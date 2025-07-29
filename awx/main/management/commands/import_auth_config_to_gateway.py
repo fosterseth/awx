@@ -172,6 +172,8 @@ class Command(BaseCommand):
 
                 if not migrators:
                     self.stdout.write(self.style.WARNING('NO MIGRATIONS WILL EXECUTE.'))
+                    # Exit with success code since this is not an error condition
+                    sys.exit(0)
                 else:
                     for migrator in migrators:
                         self.stdout.write(self.style.SUCCESS(f'\n=== Migrating {migrator.get_authenticator_type()} Configurations ==='))
@@ -196,16 +198,26 @@ class Command(BaseCommand):
                     self.stdout.write(f'Total settings unchanged: {total_results["settings_unchanged"]}')
                     self.stdout.write(f'Total settings failed: {total_results["settings_failed"]}')
 
+                    # Check for any failures and return appropriate status code
+                    has_failures = total_results["failed"] > 0 or total_results["mappers_failed"] > 0 or total_results["settings_failed"] > 0
+
+                    if has_failures:
+                        self.stdout.write(self.style.ERROR('\nMigration completed with failures.'))
+                        sys.exit(1)
+                    else:
+                        self.stdout.write(self.style.SUCCESS('\nMigration completed successfully.'))
+                        sys.exit(0)
+
         except GatewayAPIError as e:
             self.stdout.write(self.style.ERROR(f'Gateway API Error: {e.message}'))
             if e.status_code:
                 self.stdout.write(self.style.ERROR(f'Status Code: {e.status_code}'))
             if e.response_data:
                 self.stdout.write(self.style.ERROR(f'Response: {e.response_data}'))
-            return
+            sys.exit(1)
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'Unexpected error during migration: {str(e)}'))
-            return
+            sys.exit(1)
 
     def _print_export_summary(self, config_type, result):
         """Print a summary of the export results."""
