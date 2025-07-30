@@ -103,6 +103,14 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f'Skip SSL Verification: {not resource_api_client.verify_https}'))
             self.stdout.write(self.style.SUCCESS(f'Connection Validated: {response.status_code == 200}'))
 
+            if response.status_code != 200:
+                self.stdout.write(
+                    self.style.ERROR(
+                        f'Gateway Service Token is unable to connect to Gateway via the base URL {resource_api_client.base_url}.  Recieved HTTP response code {response.status_code}'
+                    )
+                )
+                sys.exit(1)
+
         # Create Gateway client and run migrations
         try:
             self.stdout.write(self.style.SUCCESS('\n=== Connecting to Gateway ==='))

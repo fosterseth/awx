@@ -189,7 +189,7 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
         self.assertIn('mappers', output)
         self.assertIn('settings', output)
 
-    @patch.dict(os.environ, {'GATEWAY_SKIP_VERIFY': 'false'}, clear=False)  # Ensure verify_https=True
+    @patch.dict(os.environ, {'GATEWAY_SKIP_VERIFY': 'false'}, clear=True)  # Ensure verify_https=True
     @patch('awx.main.management.commands.import_auth_config_to_gateway.create_api_client')
     @patch('awx.main.management.commands.import_auth_config_to_gateway.GatewayClientSVCToken')
     @patch('awx.main.management.commands.import_auth_config_to_gateway.urlparse')
@@ -540,3 +540,42 @@ class TestImportAuthConfigToGatewayCommand(TestCase):
                     mock_gateway_client.reset_mock()
                     mock_stdout.seek(0)
                     mock_stdout.truncate(0)
+
+    @patch.dict(os.environ, {'GATEWAY_SKIP_VERIFY': 'false'})
+    @patch('awx.main.management.commands.import_auth_config_to_gateway.create_api_client')
+    @patch('awx.main.management.commands.import_auth_config_to_gateway.urlparse')
+    @patch('awx.main.management.commands.import_auth_config_to_gateway.urlunparse')
+    @patch('awx.main.management.commands.import_auth_config_to_gateway.SettingsMigrator')
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_service_token_connection_validation_failure(self, mock_stdout, mock_settings_migrator, mock_urlunparse, mock_urlparse, mock_create_api_client):
+        """Test that non-200 response from get_service_metadata causes error exit."""
+        # Mock resource API client with failing response
+        mock_resource_client = Mock()
+        mock_resource_client.base_url = 'https://gateway.example.com/api/v1'
+        mock_resource_client.jwt_user_id = 'test-user'
+        mock_resource_client.jwt_expiration = '2024-12-31'
+        mock_resource_client.verify_https = True
+        mock_response = Mock()
+        mock_response.status_code = 401  # Simulate unauthenticated error
+        mock_resource_client.get_service_metadata.return_value = mock_response
+        mock_create_api_client.return_value = mock_resource_client
+
+        # Mock URL parsing (needed for the service token flow)
+        mock_parsed = Mock()
+        mock_parsed.scheme = 'https'
+        mock_parsed.netloc = 'gateway.example.com'
+        mock_urlparse.return_value = mock_parsed
+        mock_urlunparse.return_value = 'https://gateway.example.com/'
+
+        with patch.object(self.command, 'stdout', mock_stdout):
+            with pytest.raises(SystemExit) as exc_info:
+                self.command.handle(**self.options_svc_token_skip_all())
+            # Should exit with code 1 for connection failure
+            assert exc_info.value.code == 1
+
+        # Verify error message is displayed
+        output = mock_stdout.getvalue()
+        self.assertIn(
+            'Gateway Service Token is unable to connect to Gateway via the base URL https://gateway.example.com/.  Recieved HTTP response code 401', output
+        )
+        self.assertIn('Connection Validated: False', output)
