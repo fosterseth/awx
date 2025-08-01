@@ -464,17 +464,18 @@ class GatewayClient:
                 # Return the specific setting value or None if not found
                 return settings_data.get(setting_name)
             else:
-                error_msg = f"Failed to get Gateway settings. Status: {response.status_code}"
+                error_msg = f"Failed to get Gateway settings from '{endpoint}' for '{setting_name}'. Status: {response.status_code}"
+                error_data = response.text
                 try:
                     error_data = response.json()
                     error_msg += f", Error: {error_data}"
                 except requests.exceptions.JSONDecodeError:
                     error_msg += f", Response: {response.text}"
 
-                raise GatewayAPIError(error_msg, response.status_code, response.json() if response.content else None)
+                raise GatewayAPIError(error_msg, response.status_code, error_data)
 
         except requests.RequestException as e:
-            raise GatewayAPIError(f"Failed to get Gateway setting: {str(e)}")
+            raise GatewayAPIError(f"Failed to get Gateway settings from '{endpoint}' for '{setting_name}'. Unexpected Exception - Error: {str(e)}")
 
     def get_base_url(self) -> str:
         """Get the base URL of the Gateway instance.
