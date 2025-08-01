@@ -14,12 +14,14 @@ class TACACSMigrator(BaseAuthenticatorMigrator):
     Handles the migration of TACACS+ authenticators from AWX to Gateway.
     """
 
-    CATEGORY = "TACACS+"
+    CATEGORY = "TACACSPLUS"
     AUTH_TYPE = "ansible_base.authentication.authenticator_plugins.tacacs"
 
     def get_authenticator_type(self):
-        """Get the human-readable authenticator type name."""
-        return "TACACS+"
+        """Get the human-readable authenticator type name.
+        Named TACACSPLUS because `+` is not allowed in authenticator slug.
+        """
+        return "TACACSPLUS"
 
     def get_controller_config(self):
         """

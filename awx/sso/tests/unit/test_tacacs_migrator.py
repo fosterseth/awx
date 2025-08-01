@@ -12,7 +12,7 @@ def test_get_controller_config(test_tacacs_config):
     result = obj.get_controller_config()
     assert len(result) == 1
     config = result[0]
-    assert config['category'] == 'TACACS+'
+    assert config['category'] == 'TACACSPLUS'
     settings_data = config['settings']
     assert settings_data['name'] == 'default'
     assert settings_data['type'] == 'ansible_base.authentication.authenticator_plugins.tacacs'
