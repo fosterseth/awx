@@ -56,7 +56,7 @@ class AzureADMigrator(BaseAuthenticatorMigrator):
                     "name": authenticator_name,
                     "slug": authenticator_slug,
                     "type": "ansible_base.authentication.authenticator_plugins.azuread",
-                    "enabled": False,
+                    "enabled": True,
                     "create_objects": True,
                     "remove_users": False,
                     "configuration": {
