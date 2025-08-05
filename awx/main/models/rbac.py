@@ -679,10 +679,11 @@ def sync_members_to_new_rbac(instance, action, model, pk_set, reverse, **kwargs)
         assignment = give_or_remove_permission(role, user, giving=is_giving, rd=rd)
 
         # sync to resource server
-        if is_giving:
-            maybe_reverse_sync_assignment(assignment)
-        else:
-            maybe_reverse_sync_unassignment(rd, user, role.content_object)
+        if rbac_sync_enabled.enabled:
+            if is_giving:
+                maybe_reverse_sync_assignment(assignment)
+            else:
+                maybe_reverse_sync_unassignment(rd, user, role.content_object)
 
 
 def sync_parents_to_new_rbac(instance, action, model, pk_set, reverse, **kwargs):
@@ -729,10 +730,11 @@ def sync_parents_to_new_rbac(instance, action, model, pk_set, reverse, **kwargs)
             assignment = give_or_remove_permission(child_role, team, giving=is_giving, rd=rd)
 
             # sync to resource server
-            if is_giving:
-                maybe_reverse_sync_assignment(assignment)
-            else:
-                maybe_reverse_sync_unassignment(rd, team, child_role.content_object)
+            if rbac_sync_enabled.enabled:
+                if is_giving:
+                    maybe_reverse_sync_assignment(assignment)
+                else:
+                    maybe_reverse_sync_unassignment(rd, team, child_role.content_object)
 
 
 ROLE_DEFINITION_TO_ROLE_FIELD = {
