@@ -18,6 +18,8 @@ class BaseAuthenticatorMigrator:
     KEYS_TO_PRESERVE = ['idp']
     # Class-level flag to track if LOGIN_REDIRECT_OVERRIDE was set by any migrator
     login_redirect_override_set_by_migrator = False
+    # Class-level variable to store the new LOGIN_REDIRECT_OVERRIDE URL computed by migrators
+    login_redirect_override_new_url = None
 
     def __init__(self, gateway_client=None, command=None, force=False):
         """
@@ -578,6 +580,10 @@ class BaseAuthenticatorMigrator:
                 - gateway_authenticator: The created/updated authenticator info
             valid_login_urls: List of URL patterns to match against
         """
+        # Check if another migrator has already handled login redirect override
+        if BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator:
+            raise RuntimeError("LOGIN_REDIRECT_OVERRIDE has already been handled by another migrator")
+
         login_redirect_override = config.get('login_redirect_override')
         if not login_redirect_override:
             return
@@ -628,14 +634,16 @@ class BaseAuthenticatorMigrator:
         if not sso_login_url:
             return
 
-        # Update LOGIN_REDIRECT_OVERRIDE with the new Gateway URL
+        # Compute the new LOGIN_REDIRECT_OVERRIDE URL with the Gateway URL
         gateway_base_url = self.gateway_client.get_base_url()
         parsed_sso = urlparse(sso_login_url)
         parsed_gw = urlparse(gateway_base_url)
         updated_query = self._updated_query_string(parsed_sso)
         complete_url = parsed_redirect._replace(scheme=parsed_gw.scheme, path=parsed_sso.path, netloc=parsed_gw.netloc, query=updated_query).geturl()
-        self._write_output(f'Updating LOGIN_REDIRECT_OVERRIDE to: {complete_url}')
-        self.gateway_client.update_gateway_setting('LOGIN_REDIRECT_OVERRIDE', complete_url)
+        self._write_output(f'LOGIN_REDIRECT_OVERRIDE will be updated to: {complete_url}')
+
+        # Store the new URL in class variable for settings migrator to use
+        BaseAuthenticatorMigrator.login_redirect_override_new_url = complete_url
 
         # Set the class-level flag to indicate LOGIN_REDIRECT_OVERRIDE was handled by a migrator
         BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator = True

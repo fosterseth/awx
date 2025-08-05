@@ -880,8 +880,9 @@ class TestHandleLoginOverride:
         self.command = Mock()
         self.migrator = BaseAuthenticatorMigrator(self.gateway_client, self.command)
 
-        # Reset the class-level flag before each test
+        # Reset the class-level variables before each test
         BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator = False
+        BaseAuthenticatorMigrator.login_redirect_override_new_url = None
 
     def test_handle_login_override_no_login_redirect_override(self):
         """Test that method returns early when no login_redirect_override is provided."""
@@ -981,8 +982,10 @@ class TestHandleLoginOverride:
 
         # Verify gateway client methods were called correctly
         self.gateway_client.get_base_url.assert_called_once()
-        self.gateway_client.update_gateway_setting.assert_called_once_with('LOGIN_REDIRECT_OVERRIDE', 'https://gateway.example.com/sso/auth/login/123/')
+        # update_gateway_setting should NOT be called - URL is stored in class variable instead
+        self.gateway_client.update_gateway_setting.assert_not_called()
         assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+        assert BaseAuthenticatorMigrator.login_redirect_override_new_url == 'https://gateway.example.com/sso/auth/login/123/'
 
     def test_handle_login_override_multiple_valid_urls_first_matches(self):
         """Test that first matching URL in valid_login_urls is used."""
@@ -998,8 +1001,9 @@ class TestHandleLoginOverride:
         self.migrator.handle_login_override(config, valid_login_urls)
 
         # Should still work since first URL matches
-        self.gateway_client.update_gateway_setting.assert_called_once_with('LOGIN_REDIRECT_OVERRIDE', 'https://gateway.example.com/sso/auth/login/123/')
+        self.gateway_client.update_gateway_setting.assert_not_called()
         assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+        assert BaseAuthenticatorMigrator.login_redirect_override_new_url == 'https://gateway.example.com/sso/auth/login/123/'
 
     def test_handle_login_override_multiple_valid_urls_last_matches(self):
         """Test that last matching URL in valid_login_urls is used."""
@@ -1015,8 +1019,9 @@ class TestHandleLoginOverride:
         self.migrator.handle_login_override(config, valid_login_urls)
 
         # Should work since last URL matches
-        self.gateway_client.update_gateway_setting.assert_called_once_with('LOGIN_REDIRECT_OVERRIDE', 'https://gateway.example.com/sso/auth/login/123/')
+        self.gateway_client.update_gateway_setting.assert_not_called()
         assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+        assert BaseAuthenticatorMigrator.login_redirect_override_new_url == 'https://gateway.example.com/sso/auth/login/123/'
 
     def test_handle_login_override_partial_url_match(self):
         """Test that partial URL matching works (using 'in' operator)."""
@@ -1031,10 +1036,9 @@ class TestHandleLoginOverride:
         self.migrator.handle_login_override(config, valid_login_urls)
 
         # Should work since valid URL is contained in login_redirect_override
-        self.gateway_client.update_gateway_setting.assert_called_once_with(
-            'LOGIN_REDIRECT_OVERRIDE', 'https://gateway.example.com:8080/auth/login/azuread/456/?next=%2Fdashboard'
-        )
+        self.gateway_client.update_gateway_setting.assert_not_called()
         assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+        assert BaseAuthenticatorMigrator.login_redirect_override_new_url == 'https://gateway.example.com:8080/auth/login/azuread/456/?next=%2Fdashboard'
 
     def test_handle_login_override_saml_with_parameters(self):
         """Test LOGIN_REDIRECT_OVERRIDE with SAML IDP parameters."""
@@ -1050,10 +1054,9 @@ class TestHandleLoginOverride:
         self.migrator.handle_login_override(config, valid_login_urls)
 
         # Should work with SAML parameter URLs
-        self.gateway_client.update_gateway_setting.assert_called_once_with(
-            'LOGIN_REDIRECT_OVERRIDE', 'https://gateway.local/auth/login/saml/789/?idp=mycompany'
-        )
+        self.gateway_client.update_gateway_setting.assert_not_called()
         assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+        assert BaseAuthenticatorMigrator.login_redirect_override_new_url == 'https://gateway.local/auth/login/saml/789/?idp=mycompany'
 
     def test_handle_login_override_github_with_trailing_slash(self):
         """Test LOGIN_REDIRECT_OVERRIDE with trailing slash."""
@@ -1069,8 +1072,9 @@ class TestHandleLoginOverride:
         self.migrator.handle_login_override(config, valid_login_urls)
 
         # Should work with trailing slash URLs
-        self.gateway_client.update_gateway_setting.assert_called_once_with('LOGIN_REDIRECT_OVERRIDE', 'https://gateway.internal/auth/login/github/999/')
+        self.gateway_client.update_gateway_setting.assert_not_called()
         assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+        assert BaseAuthenticatorMigrator.login_redirect_override_new_url == 'https://gateway.internal/auth/login/github/999/'
 
     def test_handle_login_override_empty_valid_urls_list(self):
         """Test that method returns early when valid_login_urls is empty."""
@@ -1087,8 +1091,8 @@ class TestHandleLoginOverride:
         self.gateway_client.update_gateway_setting.assert_not_called()
         assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
 
-    def test_handle_login_override_preserves_existing_flag_state(self):
-        """Test that method preserves flag state if it was already set."""
+    def test_handle_login_override_already_handled_raises_error(self):
+        """Test that calling handle_login_override when already handled raises RuntimeError."""
         # Set flag to True initially
         BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator = True
 
@@ -1098,13 +1102,9 @@ class TestHandleLoginOverride:
         }
         valid_login_urls = ['/sso/login/github']
 
-        # Mock gateway client methods
-        self.gateway_client.get_base_url.return_value = 'https://gateway.example.com'
-
-        self.migrator.handle_login_override(config, valid_login_urls)
-
-        # Flag should still be True
-        assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+        # Should raise RuntimeError when trying to call again
+        with pytest.raises(RuntimeError, match="LOGIN_REDIRECT_OVERRIDE has already been handled by another migrator"):
+            self.migrator.handle_login_override(config, valid_login_urls)
 
     def test_handle_login_override_writes_output_message(self):
         """Test that method writes output message when updating."""
@@ -1122,7 +1122,10 @@ class TestHandleLoginOverride:
             self.migrator.handle_login_override(config, valid_login_urls)
 
             # Verify output message was written
-            mock_write_output.assert_called_once_with('Updating LOGIN_REDIRECT_OVERRIDE to: https://gateway.test/auth/login/google/555/')
+            mock_write_output.assert_called_once_with('LOGIN_REDIRECT_OVERRIDE will be updated to: https://gateway.test/auth/login/google/555/')
+            # Verify class variables were set correctly
+            assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+            assert BaseAuthenticatorMigrator.login_redirect_override_new_url == 'https://gateway.test/auth/login/google/555/'
 
     @pytest.mark.parametrize(
         "login_redirect_override,valid_urls,expected_match",
@@ -1170,15 +1173,17 @@ class TestHandleLoginOverride:
         self.migrator.handle_login_override(config, valid_urls)
 
         if expected_match:
-            # Should call gateway methods when URL matches
+            # Should call get_base_url when URL matches but NOT update_gateway_setting
             self.gateway_client.get_base_url.assert_called_once()
-            self.gateway_client.update_gateway_setting.assert_called_once()
+            self.gateway_client.update_gateway_setting.assert_not_called()
             assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+            assert BaseAuthenticatorMigrator.login_redirect_override_new_url is not None
         else:
             # Should not call gateway methods when URL doesn't match
             self.gateway_client.get_base_url.assert_not_called()
             self.gateway_client.update_gateway_setting.assert_not_called()
             assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is False
+            assert BaseAuthenticatorMigrator.login_redirect_override_new_url is None
 
     def test_handle_login_override_improved_url_parsing(self):
         """Test that improved URL parsing with proper path boundary detection prevents false positive matches."""
@@ -1216,10 +1221,9 @@ class TestHandleLoginOverride:
 
         # Should match because the query parameter is properly contained with boundaries
         self.gateway_client.get_base_url.assert_called_once()
-        self.gateway_client.update_gateway_setting.assert_called_once_with(
-            'LOGIN_REDIRECT_OVERRIDE', 'https://gateway.test/auth/login/saml/456/?idp=IdP&next=%2Fdashboard'
-        )
+        self.gateway_client.update_gateway_setting.assert_not_called()
         assert BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator is True
+        assert BaseAuthenticatorMigrator.login_redirect_override_new_url == 'https://gateway.test/auth/login/saml/456/?idp=IdP&next=%2Fdashboard'
 
     def test_handle_login_override_different_query_parameters(self):
         """Test that different query parameters don't match."""

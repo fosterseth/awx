@@ -48,16 +48,21 @@ class SettingsMigrator(BaseAuthenticatorMigrator):
             list: List of configured settings that need to be migrated
         """
         # Define settings that should be migrated from AWX to Gateway
-        settings_to_migrate = ['SESSION_COOKIE_AGE', 'SOCIAL_AUTH_USERNAME_IS_FULL_EMAIL', 'ALLOW_OAUTH2_FOR_EXTERNAL_USERS']
-
-        # Add LOGIN_REDIRECT_OVERRIDE to the list if no authenticator migrator has handled it
-        if not BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator:
-            settings_to_migrate.append("LOGIN_REDIRECT_OVERRIDE")
+        settings_to_migrate = ['SESSION_COOKIE_AGE', 'SOCIAL_AUTH_USERNAME_IS_FULL_EMAIL', 'ALLOW_OAUTH2_FOR_EXTERNAL_USERS', 'LOGIN_REDIRECT_OVERRIDE']
 
         found_configs = []
 
         for setting_name in settings_to_migrate:
-            setting_value = getattr(settings, setting_name, None)
+            # Handle LOGIN_REDIRECT_OVERRIDE specially
+            if setting_name == 'LOGIN_REDIRECT_OVERRIDE':
+                if BaseAuthenticatorMigrator.login_redirect_override_set_by_migrator:
+                    # Use the URL computed by the authenticator migrator
+                    setting_value = BaseAuthenticatorMigrator.login_redirect_override_new_url
+                else:
+                    # Use the original controller setting value
+                    setting_value = getattr(settings, setting_name, None)
+            else:
+                setting_value = getattr(settings, setting_name, None)
 
             # Only include settings that have non-None and non-empty values
             if setting_value is not None and setting_value != "":

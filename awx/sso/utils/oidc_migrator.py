@@ -104,4 +104,10 @@ class OIDCMigrator(BaseAuthenticatorMigrator):
         ignore_keys = ['CALLBACK_URL', 'SCOPE']
 
         # Submit the authenticator (create or update as needed)
-        return self.submit_authenticator(gateway_config, ignore_keys, config)
+        result = self.submit_authenticator(gateway_config, ignore_keys, config)
+
+        # Handle LOGIN_REDIRECT_OVERRIDE if applicable
+        valid_login_urls = ['/sso/login/oidc']
+        self.handle_login_override(config, valid_login_urls)
+
+        return result
