@@ -265,3 +265,7 @@ plugin_routing:
         removal_date: '2022-01-23'
         warning_text: The tower_* modules have been deprecated, use awx.awx.workflow_node_wait instead.
       redirect: awx.awx.workflow_node_wait
+    application:
+      deprecation:
+        removal_version: '25.0.0'
+        warning_text: The application module manages a legacy authentication feature that is being phased out, migrate to token-based authentication instead.

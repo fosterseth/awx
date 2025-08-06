@@ -1123,15 +1123,31 @@ class UserMeList(ListAPIView):
 
 
 class OAuth2ApplicationList(ListCreateAPIView):
+    """
+    DEPRECATED: This endpoint will be removed in a future release.
+    Please use Application Tokens or Personal Access Tokens instead.
+    """
+
     name = _("OAuth 2 Applications")
+    deprecated = True
 
     model = models.OAuth2Application
     serializer_class = serializers.OAuth2ApplicationSerializer
     swagger_topic = 'Authentication'
 
+    def post(self, request, *args, **kwargs):
+        logger.warning("This feature is deprecated and will be removed. " "Thus, it is recommended to migrate to token-based authentication.")
+        return super().post(request, *args, **kwargs)
+
 
 class OAuth2ApplicationDetail(RetrieveUpdateDestroyAPIView):
+    """
+    DEPRECATED: This endpoint will be removed in a future release.
+    Please use Application Tokens or Personal Access Tokens instead.
+    """
+
     name = _("OAuth 2 Application Detail")
+    deprecated = True
 
     model = models.OAuth2Application
     serializer_class = serializers.OAuth2ApplicationSerializer
@@ -1154,6 +1170,12 @@ class ApplicationOAuth2TokenList(SubListCreateAPIView):
 
 
 class OAuth2ApplicationActivityStreamList(SubListAPIView):
+    """
+    DEPRECATED: This endpoint will be removed in a future release.
+    Please use Application Tokens or Personal Access Tokens instead.
+    """
+
+    deprecated = True
     model = models.ActivityStream
     serializer_class = serializers.ActivityStreamSerializer
     parent_model = models.OAuth2Application

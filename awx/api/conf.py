@@ -60,6 +60,7 @@ register(
     },
     label=_('OAuth 2 Timeout Settings'),
     help_text=_(
+        'DEPRECATED: This setting is for a legacy feature and will be removed. Use token-based authentication instead.'
         'Dictionary for customizing OAuth 2 timeouts, available items are '
         '`ACCESS_TOKEN_EXPIRE_SECONDS`, the duration of access tokens in the number '
         'of seconds, `AUTHORIZATION_CODE_EXPIRE_SECONDS`, the duration of '
