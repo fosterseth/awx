@@ -157,7 +157,7 @@ class GitHubMigrator(BaseAuthenticatorMigrator):
             "name": authenticator_name,
             "slug": authenticator_slug,
             "type": authenticator_type,
-            "enabled": True,
+            "enabled": False,
             "create_objects": True,  # Allow Gateway to create users/orgs/teams
             "remove_users": False,  # Don't remove users by default
             "configuration": {"KEY": key_value, "SECRET": secret_value},

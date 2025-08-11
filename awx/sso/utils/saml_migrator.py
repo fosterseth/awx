@@ -64,7 +64,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
         """
         found_configs = []
 
-        enabled = True
+        enabled = False
         remove_users = True
         create_objects = getattr(settings, "SAML_AUTO_CREATE_OBJECTS", True)
         idps = getattr(settings, "SOCIAL_AUTH_SAML_ENABLED_IDPS", {})

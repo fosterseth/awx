@@ -71,7 +71,7 @@ class GoogleOAuth2Migrator(BaseAuthenticatorMigrator):
             "name": "google",
             "slug": authenticator_slug,
             "type": "ansible_base.authentication.authenticator_plugins.google_oauth2",
-            "enabled": True,
+            "enabled": False,
             "create_objects": True,  # Allow Gateway to create users/orgs/teams
             "remove_users": False,  # Don't remove users by default
             "configuration": {

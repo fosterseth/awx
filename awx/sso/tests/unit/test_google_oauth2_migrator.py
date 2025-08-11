@@ -54,7 +54,7 @@ def test_create_gateway_authenticator(mocker, test_google_config):
     assert payload['name'] == 'google'
     assert payload['slug'] == 'aap-google-oauth2-google-oauth2'
     assert payload['type'] == 'ansible_base.authentication.authenticator_plugins.google_oauth2'
-    assert payload['enabled'] is True
+    assert payload['enabled'] is False
     assert payload['create_objects'] is True
     assert payload['remove_users'] is False
 

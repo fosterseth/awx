@@ -52,7 +52,7 @@ class OIDCMigrator(BaseAuthenticatorMigrator):
         config_data = {
             "name": "default",
             "type": self.AUTH_TYPE,
-            "enabled": True,
+            "enabled": False,
             "create_objects": True,
             "remove_users": False,
             "configuration": {
