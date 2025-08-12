@@ -73,24 +73,24 @@ def test_get_controller_config_with_mapper(saml_config_user_flags_no_value):
         {
             'map_type': 'is_superuser',
             'role': None,
-            'name': 'Role-is_superuser-attr',
+            'name': 'Role-is_superuser',
             'organization': None,
             'team': None,
             'revoke': True,
             'order': 5,
             'authenticator': -1,
-            'triggers': {'attributes': {'friends': {}, 'join_condition': 'or'}},
+            'triggers': {'attributes': {'Role': {'in': ['wilma']}, 'join_condition': 'or'}},
         },
         {
             'map_type': 'is_superuser',
             'role': None,
-            'name': 'Role-is_superuser',
+            'name': 'Role-is_superuser-attr',
             'organization': None,
             'team': None,
             'revoke': True,
             'order': 6,
             'authenticator': -1,
-            'triggers': {'attributes': {'Role': {'in': ['wilma']}, 'join_condition': 'or'}},
+            'triggers': {'attributes': {'friends': {}, 'join_condition': 'or'}},
         },
     ]
     assert result[0]['team_mappers'] == expected_maps
@@ -156,33 +156,11 @@ def test_get_controller_config_with_roles(basic_saml_config):
         {
             'map_type': 'is_superuser',
             'role': None,
-            'name': 'Role-is_superuser-attr',
-            'organization': None,
-            'team': None,
-            'revoke': False,
-            'order': 5,
-            'authenticator': -1,
-            'triggers': {'attributes': {'friends': {'in': ['barney', 'fred']}, 'join_condition': 'or'}},
-        },
-        {
-            'map_type': 'role',
-            'role': 'Platform Auditor',
-            'name': 'Role-Platform Auditor-attr',
-            'organization': None,
-            'team': None,
-            'revoke': True,
-            'order': 6,
-            'authenticator': -1,
-            'triggers': {'attributes': {'auditor': {'in': ['bamm-bamm']}, 'join_condition': 'or'}},
-        },
-        {
-            'map_type': 'is_superuser',
-            'role': None,
             'name': 'Role-is_superuser',
             'organization': None,
             'team': None,
             'revoke': False,
-            'order': 7,
+            'order': 5,
             'authenticator': -1,
             'triggers': {'attributes': {'Role': {'in': ['wilma']}, 'join_condition': 'or'}},
         },
@@ -193,9 +171,31 @@ def test_get_controller_config_with_roles(basic_saml_config):
             'organization': None,
             'team': None,
             'revoke': True,
-            'order': 8,
+            'order': 6,
             'authenticator': -1,
             'triggers': {'attributes': {'Role': {'in': ['fred']}, 'join_condition': 'or'}},
+        },
+        {
+            'map_type': 'is_superuser',
+            'role': None,
+            'name': 'Role-is_superuser-attr',
+            'organization': None,
+            'team': None,
+            'revoke': False,
+            'order': 7,
+            'authenticator': -1,
+            'triggers': {'attributes': {'friends': {'in': ['barney', 'fred']}, 'join_condition': 'or'}},
+        },
+        {
+            'map_type': 'role',
+            'role': 'Platform Auditor',
+            'name': 'Role-Platform Auditor-attr',
+            'organization': None,
+            'team': None,
+            'revoke': True,
+            'order': 8,
+            'authenticator': -1,
+            'triggers': {'attributes': {'auditor': {'in': ['bamm-bamm']}, 'join_condition': 'or'}},
         },
         {
             'map_type': 'organization',
@@ -223,9 +223,13 @@ def test_get_controller_config_with_roles(basic_saml_config):
 
     assert result[0]['team_mappers'] == expected_maps
     extra_data = result[0]['settings']['configuration']['EXTRA_DATA']
-    assert ['member-of', 'member-of'] in extra_data
-    assert ['admin-of', 'admin-of'] in extra_data
-    assert ['Role', 'Role'] in extra_data
-    assert ['auditor', 'auditor'] in extra_data
-    assert ['friends', 'friends'] in extra_data
-    assert ['group_name', 'group_name'] in extra_data
+    extra_data_items = [
+        ['member-of', 'member-of'],
+        ['admin-of', 'admin-of'],
+        ['Role', 'Role'],
+        ['friends', 'friends'],
+        ['group_name', 'group_name'],
+    ]
+    for item in extra_data_items:
+        assert item in extra_data
+        assert extra_data.count(item) == 1

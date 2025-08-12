@@ -48,7 +48,6 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
         super().__init__(*args, **kwargs)
         self.next_order = 1
         self.team_mappers = []
-        self.dynamic_extra_data = [["Role", "Role"]]
 
     def get_authenticator_type(self):
         """Get the human-readable authenticator type name."""
@@ -73,7 +72,8 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
         # Get org and team mappings using the new fallback functions
         org_map_value = self.get_social_org_map("SOCIAL_AUTH_SAML_ORGANIZATION_MAP")
         team_map_value = self.get_social_team_map("SOCIAL_AUTH_SAML_TEAM_MAP")
-        extra_data = getattr(settings, "SOCIAL_AUTH_SAML_EXTRA_DATA", None)
+        self.extra_data = getattr(settings, "SOCIAL_AUTH_SAML_EXTRA_DATA", [])
+        self._add_to_extra_data(['Role', 'Role'])
 
         support_contact = getattr(settings, "SOCIAL_AUTH_SAML_SUPPORT_CONTACT", {})
         technical_contact = getattr(settings, "SOCIAL_AUTH_SAML_TECHNICAL_CONTACT", {})
@@ -92,14 +92,9 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
         self.team_mappers, self.next_order = team_map_to_gateway_format(team_map_value, start_order=self.next_order)
 
         self._team_attr_to_gateway_format(saml_team_attr)
-        self._user_flags_by_attr_value_to_gateway_format(user_flags_by_attr)
         self._user_flags_by_role_to_gateway_format(user_flags_by_attr)
+        self._user_flags_by_attr_value_to_gateway_format(user_flags_by_attr)
         self._org_attr_to_gateway_format(org_attr)
-
-        if not extra_data:
-            extra_data = self.dynamic_extra_data
-        elif isinstance(extra_data, list):
-            extra_data.extend(self.dynamic_extra_data)
 
         for name, value in idps.items():
             config_data = {
@@ -126,7 +121,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
                     "SUPPORT_CONTACT": support_contact,
                     "SECURITY_CONFIG": security_config,
                     "SP_EXTRA": sp_extra,
-                    "EXTRA_DATA": extra_data,
+                    "EXTRA_DATA": self.extra_data,
                 },
             }
 
@@ -185,7 +180,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
             return
 
         revoke = saml_team_attr.get('remove', True)
-        self.dynamic_extra_data.extend([[saml_attr, saml_attr]])
+        self._add_to_extra_data([saml_attr, saml_attr])
 
         for item in saml_team_attr["team_org_map"]:
             team_list = item["team"]
@@ -251,7 +246,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
 
                 revoke = user_flags_by_attr.get(v['revoke'], True)
                 attr_name = user_flags_by_attr[k]
-                self.dynamic_extra_data.extend([[attr_name, attr_name]])
+                self._add_to_extra_data([attr_name, attr_name])
 
                 if v['role']:
                     name = f"Role-{v['role']}-attr"
@@ -285,7 +280,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
                 organization = "{% " + f"for_attr_value('{attr_name}')" + " %}"
                 revoke = org_attr.get(v['revoke'], True)
 
-                self.dynamic_extra_data.extend([[attr_name, attr_name]])
+                self._add_to_extra_data([attr_name, attr_name])
 
                 name = f"Role-{v['role']}-attr"
                 self.team_mappers.append(
@@ -307,3 +302,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
                     }
                 )
                 self.next_order += 1
+
+    def _add_to_extra_data(self, item: list):
+        if item not in self.extra_data:
+            self.extra_data.append(item)
