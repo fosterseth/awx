@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from awx.sso.utils.saml_migrator import SAMLMigrator
 
 
@@ -233,3 +233,40 @@ def test_get_controller_config_with_roles(basic_saml_config):
     for item in extra_data_items:
         assert item in extra_data
         assert extra_data.count(item) == 1
+
+
+@pytest.mark.django_db
+def test_get_controller_config_enabled_false(basic_saml_config):
+    """SAML controller export marks settings.enabled False by default."""
+    gateway_client = MagicMock()
+    command_obj = MagicMock()
+    obj = SAMLMigrator(gateway_client, command_obj)
+
+    result = obj.get_controller_config()
+    assert isinstance(result, list) and len(result) >= 1
+    assert result[0]['settings']['enabled'] is False
+
+
+@pytest.mark.django_db
+def test_create_gateway_authenticator_submits_disabled(basic_saml_config):
+    """Submitted Gateway authenticator config must have enabled=False and correct ignore keys."""
+    gateway_client = MagicMock()
+    command_obj = MagicMock()
+    obj = SAMLMigrator(gateway_client, command_obj)
+
+    config = obj.get_controller_config()[0]
+
+    with patch.object(
+        obj,
+        'submit_authenticator',
+        return_value={'success': True, 'action': 'created', 'error': None},
+    ) as submit_mock:
+        obj.create_gateway_authenticator(config)
+
+        # Extract submitted args: gateway_config, ignore_keys, original_config
+        submitted_gateway_config = submit_mock.call_args[0][0]
+        ignore_keys = submit_mock.call_args[0][1]
+
+        assert submitted_gateway_config['enabled'] is False
+        assert 'CALLBACK_URL' in ignore_keys
+        assert 'SP_PRIVATE_KEY' in ignore_keys

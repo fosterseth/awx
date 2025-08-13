@@ -156,7 +156,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
             "name": authenticator_name,
             "slug": authenticator_slug,
             "type": config_settings["type"],
-            "enabled": True,
+            "enabled": False,
             "create_objects": True,  # Allow Gateway to create users/orgs/teams
             "remove_users": False,  # Don't remove users by default
             "configuration": config_settings["configuration"],
