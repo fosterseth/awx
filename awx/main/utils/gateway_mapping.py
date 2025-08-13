@@ -6,12 +6,12 @@ This module contains functions to convert AWX authentication mappings
 """
 
 import re
-from typing import Union
+from typing import Union, Pattern, Any, cast
 
 email_regex = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 
-def pattern_to_slash_format(pattern):
+def pattern_to_slash_format(pattern: Any) -> str:
     """Convert a re.Pattern object to /pattern/flags format."""
     if not isinstance(pattern, re.Pattern):
         return str(pattern)
@@ -30,23 +30,26 @@ def pattern_to_slash_format(pattern):
 
 
 def process_sso_user_list(
-    users: Union[str, list[str], bool], email_attr: str = 'email', username_attr: str = 'username'
-) -> list[dict[str : Union[str, dict[str : dict[str:str]]]]]:
-    if type(users) is str:
+    users: Union[str, bool, Pattern[str], list[Union[str, bool, Pattern[str]]]], email_attr: str = 'email', username_attr: str = 'username'
+) -> list[dict[str, Any]]:
+    if not isinstance(users, list):
         users = [users]
 
+    # Type cast to help mypy understand the type after conversion
+    user_list: list[Union[str, bool, Pattern[str]]] = cast(list[Union[str, bool, Pattern[str]]], users)
+
     triggers = []
-    if users in [False, ["false"]]:
+    if user_list == ["false"] or user_list == [False]:
         triggers.append(
             {
                 "name": "Never Allow",
                 "trigger": {"never": {}},
             }
         )
-    elif users in [True, ["true"]]:
+    elif user_list == ["true"] or user_list == [True]:
         triggers.append({"name": "Always Allow", "trigger": {"always": {}}})
     else:
-        for user_or_email in users:
+        for user_or_email in user_list:
             if isinstance(user_or_email, re.Pattern):
                 user_or_email = pattern_to_slash_format(user_or_email)
                 # If we got a regex it could be either a username or an email object
