@@ -4,18 +4,24 @@ Unit tests for auth migration utilities.
 
 import pytest
 import re
-from awx.main.utils.gateway_mapping import org_map_to_gateway_format, team_map_to_gateway_format, role_map_to_gateway_format, process_sso_user_list
+from awx.main.utils.gateway_mapping import (
+    org_map_to_gateway_format,
+    team_map_to_gateway_format,
+    role_map_to_gateway_format,
+    process_sso_user_list,
+    process_ldap_user_list,
+)
 
 
-def get_org_mappers(org_map, start_order=1):
+def get_org_mappers(org_map, start_order=1, auth_type='sso'):
     """Helper function to get just the mappers from org_map_to_gateway_format."""
-    result, _ = org_map_to_gateway_format(org_map, start_order)
+    result, _ = org_map_to_gateway_format(org_map, start_order, auth_type=auth_type)
     return result
 
 
-def get_team_mappers(team_map, start_order=1):
+def get_team_mappers(team_map, start_order=1, auth_type='sso'):
     """Helper function to get just the mappers from team_map_to_gateway_format."""
-    result, _ = team_map_to_gateway_format(team_map, start_order)
+    result, _ = team_map_to_gateway_format(team_map, start_order, auth_type=auth_type)
     return result
 
 
@@ -106,6 +112,100 @@ class TestProcessSSOUserList:
         assert "Match Email" in result[1]["name"]
         assert result[0]["trigger"]["attributes"]["username"]["matches"] == "/^admin.*@example\\.com$/"
         assert result[1]["trigger"]["attributes"]["email"]["matches"] == "/^admin.*@example\\.com$/"
+
+    def test_empty_list(self):
+        """Test that empty list creates no triggers."""
+        result = process_sso_user_list([])
+        assert len(result) == 0
+
+
+class TestProcessLdapUserList:
+    """Tests for the process_ldap_user_list function."""
+
+    def test_none_input(self):
+        """Test that None creates no triggers (empty list)."""
+        result = process_ldap_user_list(None)
+        assert len(result) == 0
+
+    def test_none_in_list(self):
+        """Test that [None] creates no triggers (empty list)."""
+        result = process_ldap_user_list([None])
+        assert len(result) == 0
+
+    def test_true_boolean(self):
+        """Test that True creates 'Always Allow' trigger."""
+        result = process_ldap_user_list(True)
+        assert len(result) == 1
+        assert result[0]["name"] == "Always Allow"
+        assert result[0]["trigger"] == {"always": {}}
+
+    def test_true_boolean_in_list(self):
+        """Test that [True] creates 'Always Allow' trigger."""
+        result = process_ldap_user_list([True])
+        assert len(result) == 1
+        assert result[0]["name"] == "Always Allow"
+        assert result[0]["trigger"] == {"always": {}}
+
+    def test_false_boolean(self):
+        """Test that False creates 'Never Allow' trigger."""
+        result = process_ldap_user_list(False)
+        assert len(result) == 1
+        assert result[0]["name"] == "Never Allow"
+        assert result[0]["trigger"] == {"never": {}}
+
+    def test_false_boolean_in_list(self):
+        """Test that [False] creates 'Never Allow' trigger."""
+        result = process_ldap_user_list([False])
+        assert len(result) == 1
+        assert result[0]["name"] == "Never Allow"
+        assert result[0]["trigger"] == {"never": {}}
+
+    def test_single_string_group(self):
+        """Test that a single string creates group match trigger."""
+        result = process_ldap_user_list("admin_group")
+        assert len(result) == 1
+        assert result[0]["name"] == "Match User Groups"
+        assert result[0]["trigger"]["groups"]["has_or"] == ["admin_group"]
+
+    def test_single_string_group_in_list(self):
+        """Test that a single string in list creates group match trigger."""
+        result = process_ldap_user_list(["admin_group"])
+        assert len(result) == 1
+        assert result[0]["name"] == "Match User Groups"
+        assert result[0]["trigger"]["groups"]["has_or"] == ["admin_group"]
+
+    def test_multiple_groups(self):
+        """Test that multiple groups create single trigger with all groups."""
+        result = process_ldap_user_list(["group1", "group2", "group3"])
+        assert len(result) == 1
+        assert result[0]["name"] == "Match User Groups"
+        assert result[0]["trigger"]["groups"]["has_or"] == ["group1", "group2", "group3"]
+
+    def test_mixed_types_with_none(self):
+        """Test that mixed types including None are handled correctly."""
+        result = process_ldap_user_list(["group1", None, "group2"])
+        assert len(result) == 1
+        assert result[0]["name"] == "Match User Groups"
+        assert result[0]["trigger"]["groups"]["has_or"] == ["group1", None, "group2"]
+
+    def test_mixed_types_with_boolean_string(self):
+        """Test that boolean values mixed with strings are handled correctly."""
+        result = process_ldap_user_list(["group1", False, "group2"])
+        assert len(result) == 1
+        assert result[0]["name"] == "Match User Groups"
+        assert result[0]["trigger"]["groups"]["has_or"] == ["group1", False, "group2"]
+
+    def test_empty_list(self):
+        """Test that empty list creates no triggers."""
+        result = process_ldap_user_list([])
+        assert len(result) == 0
+
+    def test_numeric_values(self):
+        """Test that numeric values are handled correctly."""
+        result = process_ldap_user_list([123, "group1"])
+        assert len(result) == 1
+        assert result[0]["name"] == "Match User Groups"
+        assert result[0]["trigger"]["groups"]["has_or"] == [123, "group1"]
 
 
 class TestOrgMapToGatewayFormat:
@@ -359,6 +459,44 @@ class TestOrgMapToGatewayFormat:
         result, next_order = org_map_to_gateway_format(org_map)
         assert len(result) == 2
         assert next_order == 3
+
+    def test_org_with_auth_type_sso(self):
+        """Test org mapping with auth_type='sso' (default behavior)."""
+        org_map = {"myorg": {"users": ["testuser"]}}
+
+        result, _ = org_map_to_gateway_format(org_map, auth_type='sso')
+
+        assert len(result) == 1
+        mapping = result[0]
+        assert "Username equals testuser" in mapping["name"]
+        assert mapping["triggers"]["attributes"]["username"]["equals"] == "testuser"
+
+    def test_org_with_auth_type_ldap(self):
+        """Test org mapping with auth_type='ldap'."""
+        org_map = {"myorg": {"users": ["admin_group"]}}
+
+        result, _ = org_map_to_gateway_format(org_map, auth_type='ldap')
+
+        assert len(result) == 1
+        mapping = result[0]
+        assert "Match User Groups" in mapping["name"]
+        assert mapping["triggers"]["groups"]["has_or"] == ["admin_group"]
+
+    def test_org_with_auth_type_ldap_boolean(self):
+        """Test org mapping with auth_type='ldap' and boolean values."""
+        org_map = {"myorg": {"users": True, "admins": False}}
+
+        result, _ = org_map_to_gateway_format(org_map, auth_type='ldap')
+
+        assert len(result) == 2
+        user_mapping = next(m for m in result if "Users" in m["name"])
+        admin_mapping = next(m for m in result if "Admins" in m["name"])
+
+        assert "Always Allow" in user_mapping["name"]
+        assert user_mapping["triggers"]["always"] == {}
+
+        assert "Never Allow" in admin_mapping["name"]
+        assert admin_mapping["triggers"]["never"] == {}
 
 
 class TestTeamMapToGatewayFormat:
@@ -817,6 +955,44 @@ class TestTeamMapToGatewayFormat:
         assert "team3" in teams
         assert teams.count("team2") == 2  # team2 should appear twice
 
+    def test_team_with_auth_type_sso(self):
+        """Test team mapping with auth_type='sso' (default behavior)."""
+        team_map = {"testteam": {"organization": "testorg", "users": ["testuser"]}}
+
+        result, _ = team_map_to_gateway_format(team_map, auth_type='sso')
+
+        assert len(result) == 1
+        mapping = result[0]
+        assert "Username equals testuser" in mapping["name"]
+        assert mapping["triggers"]["attributes"]["username"]["equals"] == "testuser"
+
+    def test_team_with_auth_type_ldap(self):
+        """Test team mapping with auth_type='ldap'."""
+        team_map = {"testteam": {"organization": "testorg", "users": ["admin_group"]}}
+
+        result, _ = team_map_to_gateway_format(team_map, auth_type='ldap')
+
+        assert len(result) == 1
+        mapping = result[0]
+        assert "Match User Groups" in mapping["name"]
+        assert mapping["triggers"]["groups"]["has_or"] == ["admin_group"]
+
+    def test_team_with_auth_type_ldap_boolean(self):
+        """Test team mapping with auth_type='ldap' and boolean values."""
+        team_map_true = {"testteam": {"organization": "testorg", "users": True}}
+        team_map_false = {"testteam": {"organization": "testorg", "users": False}}
+
+        result_true, _ = team_map_to_gateway_format(team_map_true, auth_type='ldap')
+        result_false, _ = team_map_to_gateway_format(team_map_false, auth_type='ldap')
+
+        assert len(result_true) == 1
+        assert "Always Allow" in result_true[0]["name"]
+        assert result_true[0]["triggers"]["always"] == {}
+
+        assert len(result_false) == 1
+        assert "Never Allow" in result_false[0]["name"]
+        assert result_false[0]["triggers"]["never"] == {}
+
 
 # Parametrized tests for edge cases
 @pytest.mark.parametrize(
@@ -927,3 +1103,40 @@ def test_team_gateway_format_compliance(team_map):
         assert isinstance(mapping["role"], str)
         assert isinstance(mapping["revoke"], bool)
         assert isinstance(mapping["order"], int)
+
+
+class TestAAP51531SpecificCase:
+    """Test case specifically for JIRA AAP-51531 requirements."""
+
+    def test_ldap_networking_org_mapping_aap_51531(self):
+        """Test the specific LDAP organization mapping case for JIRA AAP-51531."""
+        # This case is added for JIRA AAP-51531
+        org_map = {"Networking": {"admins": "cn=networkadmins,ou=groups,dc=example,dc=com", "users": True, "remove_admins": True, "remove_users": True}}
+
+        result = get_org_mappers(org_map, auth_type='ldap')
+
+        # Should create 2 mappers: one for admins, one for users
+        assert len(result) == 2
+
+        # Find admin and user mappers
+        admin_mapper = next((m for m in result if m['role'] == 'Organization Admin'), None)
+        user_mapper = next((m for m in result if m['role'] == 'Organization Member'), None)
+
+        assert admin_mapper is not None
+        assert user_mapper is not None
+
+        # Verify admin mapper details
+        assert admin_mapper['organization'] == 'Networking'
+        assert admin_mapper['revoke'] is True  # remove_admins: true
+        assert 'Match User Groups' in admin_mapper['name']
+        assert admin_mapper['triggers']['groups']['has_or'] == ['cn=networkadmins,ou=groups,dc=example,dc=com']
+
+        # Verify user mapper details
+        assert user_mapper['organization'] == 'Networking'
+        assert user_mapper['revoke'] is True  # remove_users: true
+        assert 'Always Allow' in user_mapper['name']
+        assert user_mapper['triggers']['always'] == {}
+
+        # Verify both mappers have correct map_type
+        assert admin_mapper['map_type'] == 'organization'
+        assert user_mapper['map_type'] == 'organization'

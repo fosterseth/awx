@@ -6,7 +6,7 @@ This module contains functions to convert AWX authentication mappings
 """
 
 import re
-from typing import Union, Pattern, Any, cast
+from typing import cast, Any, Literal, Pattern, Union
 
 email_regex = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
@@ -29,8 +29,40 @@ def pattern_to_slash_format(pattern: Any) -> str:
     return f"/{pattern.pattern}/{flags_str}"
 
 
+def process_ldap_user_list(
+    groups: Union[None, str, bool, list[Union[None, str, bool]]],
+) -> list[dict[str, Any]]:
+    if not isinstance(groups, list):
+        groups = [groups]
+
+    # Type cast to help mypy understand the type after conversion
+    groups_list: list[Union[str, bool, None]] = cast(list[Union[str, bool, None]], groups)
+
+    triggers = []
+    if groups_list == [None]:
+        # A None value means we shouldn't update whatever this is based on LDAP values
+        pass
+    elif groups_list == []:
+        # Empty list means no triggers should be created
+        pass
+    elif groups_list == [True]:
+        triggers.append({"name": "Always Allow", "trigger": {"always": {}}})
+    elif groups_list == [False]:
+        triggers.append(
+            {
+                "name": "Never Allow",
+                "trigger": {"never": {}},
+            }
+        )
+    else:
+        triggers.append({"name": "Match User Groups", "trigger": {"groups": {"has_or": groups_list}}})
+    return triggers
+
+
 def process_sso_user_list(
-    users: Union[str, bool, Pattern[str], list[Union[str, bool, Pattern[str]]]], email_attr: str = 'email', username_attr: str = 'username'
+    users: Union[str, bool, Pattern[str], list[Union[str, bool, Pattern[str]]]],
+    email_attr: str = 'email',
+    username_attr: str = 'username',
 ) -> list[dict[str, Any]]:
     if not isinstance(users, list):
         users = [users]
@@ -87,7 +119,7 @@ def process_sso_user_list(
     return triggers
 
 
-def team_map_to_gateway_format(team_map, start_order=1, email_attr: str = 'email', username_attr: str = 'username'):
+def team_map_to_gateway_format(team_map, start_order=1, email_attr: str = 'email', username_attr: str = 'username', auth_type: Literal['sso', 'ldap'] = 'sso'):
     """Convert AWX team mapping to Gateway authenticator format.
 
     Args:
@@ -117,7 +149,12 @@ def team_map_to_gateway_format(team_map, start_order=1, email_attr: str = 'email
         # Check for remove flag
         revoke = team.get('remove', False)
 
-        for trigger in process_sso_user_list(team['users'], email_attr=email_attr, username_attr=username_attr):
+        if auth_type == 'sso':
+            triggers = process_sso_user_list(team['users'], email_attr=email_attr, username_attr=username_attr)
+        else:
+            triggers = process_ldap_user_list(team['users'])
+
+        for trigger in triggers:
             result.append(
                 {
                     "name": f"{organization_name} - {team_name} {trigger['name']}",
@@ -136,7 +173,7 @@ def team_map_to_gateway_format(team_map, start_order=1, email_attr: str = 'email
     return result, order
 
 
-def org_map_to_gateway_format(org_map, start_order=1, email_attr: str = 'email', username_attr: str = 'username'):
+def org_map_to_gateway_format(org_map, start_order=1, email_attr: str = 'email', username_attr: str = 'username', auth_type: Literal['sso', 'ldap'] = 'sso'):
     """Convert AWX organization mapping to Gateway authenticator format.
 
     Args:
@@ -172,7 +209,12 @@ def org_map_to_gateway_format(org_map, start_order=1, email_attr: str = 'email',
             if organization.get(f"remove_{user_type}"):
                 revoke = True
 
-            for trigger in process_sso_user_list(organization[user_type], email_attr=email_attr, username_attr=username_attr):
+            if auth_type == 'sso':
+                triggers = process_sso_user_list(organization[user_type], email_attr=email_attr, username_attr=username_attr)
+            else:
+                triggers = process_ldap_user_list(organization[user_type])
+
+            for trigger in triggers:
                 result.append(
                     {
                         "name": f"{organization_name} - {permission_type} {trigger['name']}",

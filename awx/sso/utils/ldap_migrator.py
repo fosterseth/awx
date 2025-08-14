@@ -34,7 +34,8 @@ class LDAPMigrator(BaseAuthenticatorMigrator):
         for instance in ldap_instances:
             # Build the prefix for this LDAP instance
             prefix = f"AUTH_LDAP_{instance}_" if instance is not None else "AUTH_LDAP_"
-            category = f"ldap{instance}" if instance is not None else "ldap"
+            # The authenticator category is always "ldap"
+            category = "ldap"
 
             try:
                 # Get all LDAP settings for this instance
@@ -59,8 +60,8 @@ class LDAPMigrator(BaseAuthenticatorMigrator):
             allow_mappers, next_order = self._ldap_group_allow_to_gateway_format(allow_mappers, deny_group_value, deny=True, start_order=1)
             allow_mappers, next_order = self._ldap_group_allow_to_gateway_format(allow_mappers, require_group_value, deny=False, start_order=next_order)
 
-            org_mappers, next_order = org_map_to_gateway_format(org_map_value, start_order=next_order)
-            team_mappers, next_order = team_map_to_gateway_format(team_map_value, start_order=next_order)
+            org_mappers, next_order = org_map_to_gateway_format(org_map_value, start_order=next_order, auth_type='ldap')
+            team_mappers, next_order = team_map_to_gateway_format(team_map_value, start_order=next_order, auth_type='ldap')
             role_mappers, _ = role_map_to_gateway_format(role_map_value, start_order=next_order)
 
             found_configs.append(
