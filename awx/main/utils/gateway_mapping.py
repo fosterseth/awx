@@ -11,6 +11,21 @@ from typing import cast, Any, Literal, Pattern, Union
 email_regex = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 
+def truncate_name(name: str, max_length: int = 128) -> str:
+    """Truncate a name to the specified maximum length."""
+    if len(name) <= max_length:
+        return name
+    return name[:max_length]
+
+
+def build_truncated_name(org_name: str, entity_name: str, trigger_name: str, max_component_length: int = 40) -> str:
+    """Build a name by truncating each component individually and joining with ' - '."""
+    truncated_org = truncate_name(org_name, max_component_length)
+    truncated_entity = truncate_name(entity_name, max_component_length)
+    truncated_trigger = truncate_name(trigger_name, max_component_length)
+    return f"{truncated_org} - {truncated_entity} {truncated_trigger}"
+
+
 def pattern_to_slash_format(pattern: Any) -> str:
     """Convert a re.Pattern object to /pattern/flags format."""
     if not isinstance(pattern, re.Pattern):
@@ -60,63 +75,84 @@ def process_ldap_user_list(
 
 
 def process_sso_user_list(
-    users: Union[str, bool, Pattern[str], list[Union[str, bool, Pattern[str]]]],
-    email_attr: str = 'email',
-    username_attr: str = 'username',
-) -> list[dict[str, Any]]:
+    users: Union[str, bool, Pattern[str], list[Union[str, bool, Pattern[str]]]], email_attr: str = 'email', username_attr: str = 'username'
+) -> dict[str, Union[str, dict[str, dict[str, Union[str, list[str]]]]]]:
+    """Process SSO user list and return a single consolidated trigger instead of multiple separate ones."""
     if not isinstance(users, list):
         users = [users]
 
     # Type cast to help mypy understand the type after conversion
     user_list: list[Union[str, bool, Pattern[str]]] = cast(list[Union[str, bool, Pattern[str]]], users)
 
-    triggers = []
     if user_list == ["false"] or user_list == [False]:
-        triggers.append(
-            {
-                "name": "Never Allow",
-                "trigger": {"never": {}},
-            }
-        )
+        return {"name": "Never Allow", "trigger": {"never": {}}}
     elif user_list == ["true"] or user_list == [True]:
-        triggers.append({"name": "Always Allow", "trigger": {"always": {}}})
+        return {"name": "Always Allow", "trigger": {"always": {}}}
     else:
+        # Group users by type
+        emails = []
+        usernames = []
+        regexes_username = []
+        regexes_email = []
+
         for user_or_email in user_list:
             if isinstance(user_or_email, re.Pattern):
-                user_or_email = pattern_to_slash_format(user_or_email)
-                # If we got a regex it could be either a username or an email object
-                triggers.append(
-                    {"name": f"Match Username {user_or_email}", "trigger": {"attributes": {"join_condition": "or", username_attr: {"matches": user_or_email}}}}
-                )
-                triggers.append(
-                    {"name": f"Match Email {user_or_email}", "trigger": {"attributes": {"join_condition": "or", email_attr: {"matches": user_or_email}}}}
-                )
+                pattern_str = pattern_to_slash_format(user_or_email)
+                regexes_username.append(pattern_str)
+                regexes_email.append(pattern_str)
             elif isinstance(user_or_email, str):
-                # If we got a string its a direct match for either a username or an email
                 if email_regex.match(user_or_email):
-                    triggers.append(
-                        {"name": f"Email Equals {user_or_email}", "trigger": {"attributes": {"join_condition": "or", email_attr: {"equals": user_or_email}}}}
-                    )
+                    emails.append(user_or_email)
                 else:
-                    triggers.append(
-                        {
-                            "name": f"Username equals {user_or_email}",
-                            "trigger": {"attributes": {"join_condition": "or", username_attr: {"equals": user_or_email}}},
-                        }
-                    )
+                    usernames.append(user_or_email)
             else:
-                # Convert other objects to string representation and assume it could be either an email or a username
-                # The other option we could take here would be to just error out
-                triggers.append(
-                    {
-                        "name": f"Username Equals {user_or_email}",
-                        "trigger": {"attributes": {"join_condition": "or", username_attr: {"equals": str(user_or_email)}}},
-                    }
-                )
-                triggers.append(
-                    {"name": f"Email Equals {user_or_email}", "trigger": {"attributes": {"join_condition": "or", email_attr: {"equals": str(user_or_email)}}}}
-                )
-    return triggers
+                # Convert other objects to string and treat as both
+                str_val = str(user_or_email)
+                usernames.append(str_val)
+                emails.append(str_val)
+
+        # Build consolidated trigger
+        attributes = {"join_condition": "or"}
+
+        if emails:
+            if len(emails) == 1:
+                attributes[email_attr] = {"equals": emails[0]}
+            else:
+                attributes[email_attr] = {"in": emails}
+
+        if usernames:
+            if len(usernames) == 1:
+                attributes[username_attr] = {"equals": usernames[0]}
+            else:
+                attributes[username_attr] = {"in": usernames}
+
+        # For regex patterns, we need to create separate matches conditions since there's no matches_or
+        for i, pattern in enumerate(regexes_username):
+            pattern_key = f"{username_attr}_pattern_{i}" if len(regexes_username) > 1 else username_attr
+            if pattern_key not in attributes:
+                attributes[pattern_key] = {}
+            attributes[pattern_key]["matches"] = pattern
+
+        for i, pattern in enumerate(regexes_email):
+            pattern_key = f"{email_attr}_pattern_{i}" if len(regexes_email) > 1 else email_attr
+            if pattern_key not in attributes:
+                attributes[pattern_key] = {}
+            attributes[pattern_key]["matches"] = pattern
+
+        # Create a deterministic, concise name based on trigger types and counts
+        name_parts = []
+        if emails:
+            name_parts.append(f"E:{len(emails)}")
+        if usernames:
+            name_parts.append(f"U:{len(usernames)}")
+        if regexes_username:
+            name_parts.append(f"UP:{len(regexes_username)}")
+        if regexes_email:
+            name_parts.append(f"EP:{len(regexes_email)}")
+
+        name = " ".join(name_parts) if name_parts else "Mixed Rules"
+
+        return {"name": name, "trigger": {"attributes": attributes}}
 
 
 def team_map_to_gateway_format(team_map, start_order=1, email_attr: str = 'email', username_attr: str = 'username', auth_type: Literal['sso', 'ldap'] = 'sso'):
@@ -149,15 +185,29 @@ def team_map_to_gateway_format(team_map, start_order=1, email_attr: str = 'email
         # Check for remove flag
         revoke = team.get('remove', False)
 
-        if auth_type == 'sso':
-            triggers = process_sso_user_list(team['users'], email_attr=email_attr, username_attr=username_attr)
-        else:
+        if auth_type == 'ldap':
             triggers = process_ldap_user_list(team['users'])
+            for trigger in triggers:
+                result.append(
+                    {
+                        "name": build_truncated_name(organization_name, team_name, trigger['name']),
+                        "map_type": "team",
+                        "order": order,
+                        "authenticator": -1,  # Will be updated when creating the mapper
+                        "triggers": trigger['trigger'],
+                        "organization": organization_name,
+                        "team": team_name,
+                        "role": "Team Member",  # Gateway team member role
+                        "revoke": revoke,
+                    }
+                )
+                order += 1
 
-        for trigger in triggers:
+        if auth_type == 'sso':
+            trigger = process_sso_user_list(team['users'], email_attr=email_attr, username_attr=username_attr)
             result.append(
                 {
-                    "name": f"{organization_name} - {team_name} {trigger['name']}",
+                    "name": build_truncated_name(organization_name, team_name, trigger['name']),
                     "map_type": "team",
                     "order": order,
                     "authenticator": -1,  # Will be updated when creating the mapper
@@ -209,15 +259,29 @@ def org_map_to_gateway_format(org_map, start_order=1, email_attr: str = 'email',
             if organization.get(f"remove_{user_type}"):
                 revoke = True
 
-            if auth_type == 'sso':
-                triggers = process_sso_user_list(organization[user_type], email_attr=email_attr, username_attr=username_attr)
-            else:
+            if auth_type == 'ldap':
                 triggers = process_ldap_user_list(organization[user_type])
+                for trigger in triggers:
+                    result.append(
+                        {
+                            "name": build_truncated_name(organization_name, permission_type, trigger['name']),
+                            "map_type": "organization",
+                            "order": order,
+                            "authenticator": -1,  # Will be updated when creating the mapper
+                            "triggers": trigger['trigger'],
+                            "organization": organization_name,
+                            "team": None,  # Organization-level mapping, not team-specific
+                            "role": role,
+                            "revoke": revoke,
+                        }
+                    )
+                    order += 1
 
-            for trigger in triggers:
+            if auth_type == 'sso':
+                trigger = process_sso_user_list(organization[user_type], email_attr=email_attr, username_attr=username_attr)
                 result.append(
                     {
-                        "name": f"{organization_name} - {permission_type} {trigger['name']}",
+                        "name": build_truncated_name(organization_name, permission_type, trigger['name']),
                         "map_type": "organization",
                         "order": order,
                         "authenticator": -1,  # Will be updated when creating the mapper
