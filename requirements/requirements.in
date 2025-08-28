@@ -2,7 +2,7 @@ aiohttp>=3.11.6 # CVE-2024-52304
 ansiconv==1.0.0  # UPGRADE BLOCKER: from 2013, consider replacing instead of upgrading
 ansible-runner==2.4.1
 jq  # used for indirect host counting feature
-asciichartpy
+asciichartpy<=1.5.7 # Unable to build from source for >1.5.7 due to missing README.md in PyPI sdist
 asn1
 azure-identity
 azure-keyvault
@@ -10,8 +10,8 @@ boto3
 botocore
 channels
 channels-redis
-cryptography>=41.0.7  # CVE-2023-49083
-Cython<3 # due to https://github.com/yaml/pyyaml/pull/702
+cryptography>=42.0.4  # CVE-2024-26130
+Cython
 daphne
 distro
 django==4.2.24  # CVE-2025-57833
@@ -37,7 +37,7 @@ JSON-log-formatter
 jsonschema
 Markdown  # used for formatting API help
 maturin  # pydantic-core build dep
-msgpack<1.0.6  # 1.0.6+ requires cython>=3
+msgpack
 msrestazure
 OPA-python-client==2.0.2 # Code contain monkey patch targeted to 2.0.2 to fix https://github.com/Turall/OPA-python-client/issues/29
 openshift
@@ -53,11 +53,11 @@ pygerduty
 PyGithub <= 2.6.0
 pyopenssl>=23.2.0  # resolve dep conflict from cryptography pin above
 pyparsing==2.4.6  # Upgrading to v3 of pyparsing introduce errors on smart host filtering: Expected 'or' term, found 'or'  (at char 15), (line:1, col:16)
-python-daemon>3.0.0
+python-daemon
 python-dsv-sdk>=1.0.4
 python-tss-sdk>=1.2.1
 python-ldap
-pyyaml>=6.0.1
+pyyaml>=6.0.2
 pyzstd  # otel collector log file compression library
 receptorctl==1.5.7
 social-auth-core == 4.5.4 # hard pinned due to resolver picking CVE version when uncapped
@@ -78,6 +78,8 @@ setuptools_scm[toml]  # see UPGRADE BLOCKERs, xmlsec build dep
 setuptools-rust>=0.11.4  # cryptography build dep
 pkgconfig>=1.5.1  # xmlsec build dep - needed for offline build
 django-flags>=5.0.13
+protobuf>=4.25.8 # CVE-2025-4565
+idna>=3.10 # CVE-2024-3651
 # Temporarily added to use ansible-runner from git branch, to be removed
 # when ansible-runner moves from requirements_git.txt to here
 pbr
