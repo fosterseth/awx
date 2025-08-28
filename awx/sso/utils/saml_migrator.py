@@ -143,7 +143,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
         name = config_settings["name"]
 
         # Generate authenticator name and slug
-        authenticator_name = f"AWX-{category.replace('-', '_').title()}-{name}"
+        authenticator_name = f"{category.replace('-', '_').title()}-{name}"
         authenticator_slug = self._generate_authenticator_slug("saml", name)
 
         self._write_output(f"\n--- Processing {category} authenticator ---")
