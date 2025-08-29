@@ -46,7 +46,7 @@ class AzureADMigrator(BaseAuthenticatorMigrator):
         category = 'AzureAD'
 
         # Generate authenticator name and slug
-        authenticator_name = "Controller Azure AD"
+        authenticator_name = "Azure AD"
         authenticator_slug = self._generate_authenticator_slug("azure_ad", category)
 
         return [
