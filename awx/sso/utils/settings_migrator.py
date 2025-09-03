@@ -48,7 +48,14 @@ class SettingsMigrator(BaseAuthenticatorMigrator):
             list: List of configured settings that need to be migrated
         """
         # Define settings that should be migrated from AWX to Gateway
-        settings_to_migrate = ['SESSION_COOKIE_AGE', 'SOCIAL_AUTH_USERNAME_IS_FULL_EMAIL', 'ALLOW_OAUTH2_FOR_EXTERNAL_USERS', 'LOGIN_REDIRECT_OVERRIDE']
+        settings_to_migrate = [
+            'SESSION_COOKIE_AGE',
+            'SOCIAL_AUTH_USERNAME_IS_FULL_EMAIL',
+            'ALLOW_OAUTH2_FOR_EXTERNAL_USERS',
+            'LOGIN_REDIRECT_OVERRIDE',
+            'ORG_ADMINS_CAN_SEE_ALL_USERS',
+            'MANAGE_ORGANIZATION_AUTH',
+        ]
 
         found_configs = []
 
