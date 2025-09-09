@@ -163,9 +163,85 @@ class TestLDAPMigrator:
 
         assert len(result) == 2
         assert result[0]['category'] == 'ldap'
-        assert result[1]['category'] == 'ldap'
+        assert result[1]['category'] == 'ldap_1'
         assert result[0]['settings']['SERVER_URI'] == ['ldap://ldap1.example.com']
         assert result[1]['settings']['SERVER_URI'] == ['ldap://ldap2.example.com']
+
+    @patch('awx.sso.utils.ldap_migrator.settings')
+    def test_multiple_ldap_instances_unique_categories_and_slugs(self, mock_settings):
+        """Test that multiple LDAP instances get unique categories and slugs to prevent overwrites."""
+        # Mock three LDAP instances: default, instance 1, and instance 3
+        mock_settings.AUTH_LDAP_SERVER_URI = "ldap://ldap-default.example.com"
+        mock_settings.AUTH_LDAP_1_SERVER_URI = "ldap://ldap-1.example.com"
+        mock_settings.AUTH_LDAP_3_SERVER_URI = "ldap://ldap-3.example.com"
+
+        # Mock required attributes for all instances
+        for prefix in ["AUTH_LDAP_", "AUTH_LDAP_1_", "AUTH_LDAP_3_"]:
+            for key in [
+                'BIND_DN',
+                'BIND_PASSWORD',
+                'START_TLS',
+                'CONNECTION_OPTIONS',
+                'USER_SEARCH',
+                'USER_DN_TEMPLATE',
+                'USER_ATTR_MAP',
+                'GROUP_SEARCH',
+                'GROUP_TYPE',
+                'GROUP_TYPE_PARAMS',
+                'REQUIRE_GROUP',
+                'DENY_GROUP',
+                'USER_FLAGS_BY_GROUP',
+                'ORGANIZATION_MAP',
+                'TEAM_MAP',
+            ]:
+                setattr(mock_settings, f"{prefix}{key}", None)
+
+        # Mock remaining instances to return None
+        for i in [2, 4, 5]:
+            prefix = f"AUTH_LDAP_{i}_"
+            setattr(mock_settings, f"{prefix}SERVER_URI", None)
+            for key in [
+                'BIND_DN',
+                'BIND_PASSWORD',
+                'START_TLS',
+                'CONNECTION_OPTIONS',
+                'USER_SEARCH',
+                'USER_DN_TEMPLATE',
+                'USER_ATTR_MAP',
+                'GROUP_SEARCH',
+                'GROUP_TYPE',
+                'GROUP_TYPE_PARAMS',
+                'REQUIRE_GROUP',
+                'DENY_GROUP',
+                'USER_FLAGS_BY_GROUP',
+                'ORGANIZATION_MAP',
+                'TEAM_MAP',
+            ]:
+                setattr(mock_settings, f"{prefix}{key}", None)
+
+        result = self.migrator.get_controller_config()
+
+        # Should have 3 configurations with unique categories
+        assert len(result) == 3
+
+        # Check unique categories
+        categories = [config['category'] for config in result]
+        assert categories == ['ldap', 'ldap_1', 'ldap_3']
+
+        # Check corresponding server URIs to ensure correct mapping
+        assert result[0]['settings']['SERVER_URI'] == ['ldap://ldap-default.example.com']
+        assert result[1]['settings']['SERVER_URI'] == ['ldap://ldap-1.example.com']
+        assert result[2]['settings']['SERVER_URI'] == ['ldap://ldap-3.example.com']
+
+        # Verify that each config would generate a unique slug
+        expected_slugs = []
+        for config in result:
+            expected_slug = self.migrator._generate_authenticator_slug('ldap', config['category'])
+            expected_slugs.append(expected_slug)
+
+        # All slugs should be unique
+        assert len(set(expected_slugs)) == 3
+        assert expected_slugs == ['aap-ldap-ldap', 'aap-ldap-ldap_1', 'aap-ldap-ldap_3']
 
     def test_get_ldap_instance_config_basic(self):
         """Test _get_ldap_instance_config with basic settings."""

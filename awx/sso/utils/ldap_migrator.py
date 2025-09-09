@@ -34,8 +34,8 @@ class LDAPMigrator(BaseAuthenticatorMigrator):
         for instance in ldap_instances:
             # Build the prefix for this LDAP instance
             prefix = f"AUTH_LDAP_{instance}_" if instance is not None else "AUTH_LDAP_"
-            # The authenticator category is always "ldap"
-            category = "ldap"
+            # Create unique category for each LDAP instance
+            category = f"ldap_{instance}" if instance is not None else "ldap"
 
             try:
                 # Get all LDAP settings for this instance
@@ -45,6 +45,7 @@ class LDAPMigrator(BaseAuthenticatorMigrator):
 
             # Skip if SERVER_URI is not configured (required for LDAP to function)
             if not config_data.get('SERVER_URI'):
+                self._write_output(f'Skipping {category} authenticator - SERVER_URI is not configured', 'warning')
                 continue
 
             # Convert organization, team, and role mappings to Gateway format
