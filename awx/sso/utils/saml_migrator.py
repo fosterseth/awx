@@ -277,7 +277,7 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
         for k, v in ORG_ATTRIBUTE_MAPPER.items():
             if k in org_attr:
                 attr_name = org_attr.get(k)
-                organization = "{% " + f"for_attr_value('{attr_name}')" + " %}"
+                organization = "{% " + f"for_attr_value({attr_name})" + " %}"
                 revoke = org_attr.get(v['revoke'], True)
 
                 self._add_to_extra_data([attr_name, attr_name])
