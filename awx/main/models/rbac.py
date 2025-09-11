@@ -29,6 +29,7 @@ from django.conf import settings
 from ansible_base.rbac.models import RoleDefinition, RoleUserAssignment, RoleTeamAssignment
 from ansible_base.rbac.sync import maybe_reverse_sync_assignment, maybe_reverse_sync_unassignment
 from ansible_base.rbac import permission_registry
+from ansible_base.resource_registry.signals.handlers import no_reverse_sync
 from ansible_base.lib.utils.models import get_type_for_model
 
 # AWX
@@ -570,13 +571,18 @@ def get_role_definition(role):
 
     with impersonate(None):
         try:
-            rd, created = RoleDefinition.objects.get_or_create(name=rd_name, permissions=perm_list, defaults=defaults)
+            with no_reverse_sync():
+                rd, created = RoleDefinition.objects.get_or_create(name=rd_name, permissions=perm_list, defaults=defaults)
         except ValidationError:
             # This is a tricky case - practically speaking, users should not be allowed to create team roles
             # or roles that include the team member permission.
             # If we need to create this for compatibility purposes then we will create it as a managed non-editable role
             defaults['managed'] = True
-            rd, created = RoleDefinition.objects.get_or_create(name=rd_name, permissions=perm_list, defaults=defaults)
+            with no_reverse_sync():
+                rd, created = RoleDefinition.objects.get_or_create(name=rd_name, permissions=perm_list, defaults=defaults)
+
+        if created and rbac_sync_enabled.enabled:
+            sync_role_definition_manually(rd)
     return rd
 
 
@@ -814,3 +820,13 @@ def sync_user_assignments_to_old_rbac_create(instance, **kwargs):
 
 m2m_changed.connect(sync_members_to_new_rbac, Role.members.through)
 m2m_changed.connect(sync_parents_to_new_rbac, Role.parents.through)
+
+
+def sync_role_definition_manually(role_definition):
+    """
+    Manually sync a RoleDefinition using the existing sync methods.
+    """
+    if not rbac_sync_enabled.enabled:
+        return
+
+    maybe_reverse_sync_assignment(role_definition)
