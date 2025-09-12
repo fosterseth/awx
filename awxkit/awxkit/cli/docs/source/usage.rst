@@ -27,9 +27,9 @@ Getting Started
 
 Using |prog| requires some initial configuration.  To execute AWX CLI on |RHAT| 2.5 and later, you must set your environment variable to:
     
-    .. code:: 
+.. code:: 
         
-        AWXKIT_API_BASE_PATH=/api/controller/
+    AWXKIT_API_BASE_PATH=/api/controller/
 
 Here is a simple example for interacting with an AWX or |RHAT| server:
 
