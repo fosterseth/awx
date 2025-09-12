@@ -8,7 +8,7 @@ from awx.main.migrations._dab_rbac import migrate_to_new_rbac, create_permission
 class Migration(migrations.Migration):
     dependencies = [
         ('main', '0191_add_django_permissions'),
-        ('dab_rbac', '0003_alter_dabpermission_codename_and_more'),
+        ('dab_rbac', '__first__'),
     ]
 
     operations = [
