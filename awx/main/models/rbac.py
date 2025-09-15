@@ -27,7 +27,7 @@ from django.conf import settings
 
 # Ansible_base app
 from ansible_base.rbac.models import RoleDefinition, RoleUserAssignment, RoleTeamAssignment
-from ansible_base.rbac.sync import maybe_reverse_sync_assignment, maybe_reverse_sync_unassignment
+from ansible_base.rbac.sync import maybe_reverse_sync_assignment, maybe_reverse_sync_unassignment, maybe_reverse_sync_role_definition
 from ansible_base.rbac import permission_registry
 from ansible_base.resource_registry.signals.handlers import no_reverse_sync
 from ansible_base.lib.utils.models import get_type_for_model
@@ -582,7 +582,7 @@ def get_role_definition(role):
                 rd, created = RoleDefinition.objects.get_or_create(name=rd_name, permissions=perm_list, defaults=defaults)
 
         if created and rbac_sync_enabled.enabled:
-            sync_role_definition_manually(rd)
+            maybe_reverse_sync_role_definition(rd, action='create')
     return rd
 
 
@@ -820,13 +820,3 @@ def sync_user_assignments_to_old_rbac_create(instance, **kwargs):
 
 m2m_changed.connect(sync_members_to_new_rbac, Role.members.through)
 m2m_changed.connect(sync_parents_to_new_rbac, Role.parents.through)
-
-
-def sync_role_definition_manually(role_definition):
-    """
-    Manually sync a RoleDefinition using the existing sync methods.
-    """
-    if not rbac_sync_enabled.enabled:
-        return
-
-    maybe_reverse_sync_assignment(role_definition)
