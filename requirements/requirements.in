@@ -14,7 +14,7 @@ cryptography>=41.0.7  # CVE-2023-49083
 Cython<3 # due to https://github.com/yaml/pyyaml/pull/702
 daphne
 distro
-django==4.2.23  # CVE-2025-48432
+django==4.2.24  # CVE-2025-57833
 django-auth-ldap
 django-cors-headers
 django-crum
