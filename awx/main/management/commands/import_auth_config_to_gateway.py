@@ -210,8 +210,8 @@ class Command(BaseCommand):
                     has_failures = total_results["failed"] > 0 or total_results["mappers_failed"] > 0 or total_results["settings_failed"] > 0
 
                     if has_failures:
-                        self.stdout.write(self.style.ERROR('\nMigration completed with failures.'))
-                        sys.exit(1)
+                        self.stdout.write(self.style.WARNING('\nMigration completed with failures, check logs for details.'))
+                        sys.exit(0)
                     else:
                         self.stdout.write(self.style.SUCCESS('\nMigration completed successfully.'))
                         sys.exit(0)
