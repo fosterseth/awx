@@ -1183,10 +1183,28 @@ ManagedCredentialType(
                 'help_text': gettext_noop('An OAuth token to use to authenticate with.This should not be set if username/password are being used.'),
             },
             {'id': 'verify_ssl', 'label': gettext_noop('Verify SSL'), 'type': 'boolean', 'secret': False},
+            {
+                'id': 'request_timeout',
+                'label': gettext_noop('Verify SSL'),
+                'type': 'string',
+                'secret': False,
+                'default': 'galaxy',
+                'help_text': gettext_noop(
+                    'Specify the timeout Ansible should use in requests to ' 'the host. Defaults to 10s',
+                ),
+            },
         ],
         'required': ['host'],
     },
     injectors={
+        'extra_vars': {
+            'aap_hostname': '{{host}}',
+            'aap_username': '{{username}}',
+            'aap_password': '{{password}}',
+            'aap_token': '{{oauth_token}}',
+            'aap_request_timeout': '{{request_timeout}}',
+            'aap_validate_certs': '{{verify_ssl}}',
+        },
         'env': {
             'TOWER_HOST': '{{host}}',
             'TOWER_USERNAME': '{{username}}',
@@ -1198,7 +1216,14 @@ ManagedCredentialType(
             'CONTROLLER_PASSWORD': '{{password}}',
             'CONTROLLER_VERIFY_SSL': '{{verify_ssl}}',
             'CONTROLLER_OAUTH_TOKEN': '{{oauth_token}}',
-        }
+            'CONTROLLER_REQUEST_TIMEOUT': '{{request_timeout}}',
+            'AAP_HOSTNAME': '{{host}}',
+            'AAP_USERNAME': '{{username}}',
+            'AAP_PASSWORD': '{{password}}',
+            'AAP_VALIDATE_CERTS': '{{verify_ssl}}',
+            'AAP_TOKEN': '{{oauth_token}}',
+            'AAP_REQUEST_TIMEOUT': '{{request_timeout}}',
+        },
     },
 )
 
