@@ -59,7 +59,7 @@ python-tss-sdk>=1.2.1
 python-ldap
 pyyaml>=6.0.2
 pyzstd  # otel collector log file compression library
-receptorctl==1.5.7
+receptorctl==1.6.0
 social-auth-core == 4.5.4 # hard pinned due to resolver picking CVE version when uncapped
 social-auth-app-django==5.4.2  # see UPGRADE BLOCKERs
 redis[hiredis]
