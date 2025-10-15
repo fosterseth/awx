@@ -1,6 +1,6 @@
 aiohttp>=3.11.6 # CVE-2024-52304
 ansiconv==1.0.0  # UPGRADE BLOCKER: from 2013, consider replacing instead of upgrading
-ansible-runner==2.4.1
+ansible-runner==2.4.2
 jq  # used for indirect host counting feature
 asciichartpy<=1.5.7 # Unable to build from source for >1.5.7 due to missing README.md in PyPI sdist
 asn1
