@@ -176,7 +176,7 @@ def team_map_to_gateway_format(team_map, start_order=1, email_attr: str = 'email
     for team_name in team_map.keys():
         team = team_map[team_name]
         # TODO: Confirm that if we have None with remove we still won't remove
-        if team['users'] is None:
+        if team.get('users') is None:
             continue
 
         # Get the organization name
