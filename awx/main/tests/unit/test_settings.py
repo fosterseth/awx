@@ -9,6 +9,7 @@ LOCAL_SETTINGS = (
     'DEBUG',
     'NAMED_URL_GRAPH',
     'DISPATCHER_MOCK_PUBLISH',
+    'SOCIAL_AUTH_SAML_EXTRA_DATA',  # Dynamically registered by awx.sso.conf, may change after snapshot
 )
 
 
@@ -68,4 +69,6 @@ def test_merge_application_name():
     }
     result = merge_application_name(settings)["DATABASES__default__OPTIONS__application_name"]
     assert result.startswith("awx-")
-    assert "test-cluster" in result
+    # Application names are truncated to 63 chars, so just check for the prefix of cluster ID
+    assert "test-cl" in result
+    assert len(result) <= 63

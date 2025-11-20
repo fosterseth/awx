@@ -185,6 +185,8 @@ def get_external_account(user):
             account_type = "ldap"
     except AttributeError:
         pass
+    except Exception:
+        logger.exception("Error checking user LDAP profile")
 
     if user.social_auth.all():
         account_type = "social"

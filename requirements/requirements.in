@@ -27,6 +27,7 @@ django-radius
 django-solo
 djangorestframework>=3.15.2
 djangorestframework-yaml
+drf-spectacular>=0.27.0
 dynaconf<4
 filelock
 GitPython>=3.1.37  # CVE-2023-41040

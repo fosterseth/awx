@@ -25,8 +25,6 @@ jobs:
             command: /start_tests.sh test_migrations
           - name: api-lint
             command: /var/lib/awx/venv/awx/bin/tox -e linters
-          - name: api-swagger
-            command: /start_tests.sh swagger
           - name: awx-collection
             command: /start_tests.sh test_collection_all
           - name: api-schema

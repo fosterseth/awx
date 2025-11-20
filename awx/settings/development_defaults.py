@@ -41,7 +41,7 @@ PENDO_TRACKING_STATE = "off"
 INSIGHTS_TRACKING_STATE = False
 
 # debug toolbar and swagger assume that requirements/requirements_dev.txt are installed
-INSTALLED_APPS = "@merge drf_yasg,debug_toolbar"
+INSTALLED_APPS = "@merge drf_spectacular,debug_toolbar"
 MIDDLEWARE = "@insert 0 debug_toolbar.middleware.DebugToolbarMiddleware"
 
 DEBUG_TOOLBAR_CONFIG = {'ENABLE_STACKTRACES': True}

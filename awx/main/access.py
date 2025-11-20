@@ -824,6 +824,9 @@ class OAuth2TokenAccess(BaseAccess):
         return self.can_delete(obj)
 
     def can_add(self, data):
+        # Read-only tokens cannot create new tokens
+        if 'write' not in getattr(self.user, 'oauth_scopes', ['write']):
+            return False
         if 'application' in data:
             app = get_object_from_data('application', OAuth2Application, data)
             if app is None:

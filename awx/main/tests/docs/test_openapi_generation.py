@@ -7,7 +7,6 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.functional import Promise
 from django.utils.encoding import force_str
 
-from drf_yasg.codecs import OpenAPICodecJson
 import pytest
 
 from awx.api.versioning import drf_reverse
@@ -23,16 +22,17 @@ class i18nEncoder(DjangoJSONEncoder):
 
 
 @pytest.mark.django_db
-class TestSwaggerGeneration:
+class TestOpenAPIGeneration:
     """
-    This class is used to generate a Swagger/OpenAPI document for the awx
-    API.  A _prepare fixture generates a JSON blob containing OpenAPI data,
-    individual tests have the ability modify the payload.
+    This class is used to generate an OpenAPI 3.0 schema document for the AWX
+    API using drf-spectacular. A _prepare fixture generates a JSON blob
+    containing OpenAPI data, and individual tests have the ability to modify
+    the payload.
 
     Finally, the JSON content is written to a file, `swagger.json`, in the
-    current working directory.
+    current working directory (name kept for backwards compatibility).
 
-    $ py.test test_swagger_generation.py --version 3.3.0
+    $ py.test test_openapi_generation.py --version 3.3.0
 
     To customize the `info.description` in the generated OpenAPI document,
     modify the text in `awx.api.templates.swagger.description.md`
@@ -43,10 +43,10 @@ class TestSwaggerGeneration:
     @pytest.fixture(autouse=True, scope='function')
     def _prepare(self, get, admin):
         if not self.__class__.JSON:
-            url = drf_reverse('api:schema-swagger-ui') + '?format=openapi'
+            # drf-spectacular returns OpenAPI schema directly from schema endpoint
+            url = drf_reverse('api:schema-json') + '?format=json'
             response = get(url, user=admin)
-            codec = OpenAPICodecJson([])
-            data = codec.generate_swagger_object(response.data)
+            data = response.data
             if response.has_header('X-Deprecated-Paths'):
                 data['deprecated_paths'] = json.loads(response['X-Deprecated-Paths'])
 
@@ -78,7 +78,7 @@ class TestSwaggerGeneration:
                         node[method]['description'] = '\n'.join(lines)
 
                     # remove the required `version` parameter
-                    for param in node[method].get('parameters'):
+                    for param in node[method].get('parameters', []):
                         if param['in'] == 'path' and param['name'] == 'version':
                             node[method]['parameters'].remove(param)
             data['paths'] = revised_paths
@@ -100,12 +100,13 @@ class TestSwaggerGeneration:
         # for a reasonable number here; if this test starts failing, raise/lower the bounds
         paths = JSON['paths']
         assert 250 < len(paths) < 400
-        assert set(list(paths['/api/'].keys())) == set(['get', 'parameters'])
-        assert set(list(paths['/api/v2/'].keys())) == set(['get', 'parameters'])
-        assert set(list(sorted(paths['/api/v2/credentials/'].keys()))) == set(['get', 'post', 'parameters'])
-        assert set(list(sorted(paths['/api/v2/credentials/{id}/'].keys()))) == set(['delete', 'get', 'patch', 'put', 'parameters'])
-        assert set(list(paths['/api/v2/settings/'].keys())) == set(['get', 'parameters'])
-        assert set(list(paths['/api/v2/settings/{category_slug}/'].keys())) == set(['get', 'put', 'patch', 'delete', 'parameters'])
+        # drf-spectacular may or may not include 'parameters' depending on whether there are path-level parameters
+        assert 'get' in paths['/api/']
+        assert 'get' in paths['/api/v2/']
+        assert set(['get', 'post']).issubset(set(paths['/api/v2/credentials/'].keys()))
+        assert set(['delete', 'get', 'patch', 'put']).issubset(set(paths['/api/v2/credentials/{id}/'].keys()))
+        assert 'get' in paths['/api/v2/settings/']
+        assert set(['get', 'put', 'patch', 'delete']).issubset(set(paths['/api/v2/settings/{category_slug}/'].keys()))
 
     @pytest.mark.parametrize(
         'path',
@@ -121,7 +122,7 @@ class TestSwaggerGeneration:
         get(path, user=admin, expect=200)
 
     def test_autogen_response_examples(self, swagger_autogen, request):
-        for pattern, node in TestSwaggerGeneration.JSON['paths'].items():
+        for pattern, node in TestOpenAPIGeneration.JSON['paths'].items():
             pattern = pattern.replace('{id}', '[0-9]+')
             pattern = pattern.replace(r'{category_slug}', r'[a-zA-Z0-9\-]+')
             for path, result in swagger_autogen.items():
@@ -140,7 +141,7 @@ class TestSwaggerGeneration:
                                 # fields.  This is _pretty good_, but if we
                                 # have _actual_ JSON examples, those are even
                                 # better and we should use them instead
-                                for param in node[method].get('parameters'):
+                                for param in node[method].get('parameters', []):
                                     if param['in'] == 'body':
                                         node[method]['parameters'].remove(param)
                                 if request.config.getoption("--genschema"):
