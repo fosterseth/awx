@@ -14,7 +14,7 @@ cryptography>=42.0.4  # CVE-2024-26130
 Cython
 daphne
 distro
-django==4.2.24  # CVE-2025-57833
+django==4.2.26  # CVE-2025-64459
 django-auth-ldap
 django-cors-headers
 django-crum
