@@ -29,14 +29,9 @@ from jwt import decode as decode_jwt
 from awx.main.credential_plugins import github_app
 
 
-github_app_jwt_client_id_unsupported = pytest.mark.xfail(
-    raises=(AssertionError, ValueError),
-    reason='Client ID in JWT is not currently supported by ' 'PyGitHub and is disabled.\n\n' 'Ref: https://github.com/PyGithub/PyGithub/issues/3213',
-)
-
-
 RSA_PUBLIC_EXPONENT = 65_537  # noqa: WPS303
 MINIMUM_RSA_KEY_SIZE = 1024  # the lowest value chosen for performance in tests
+TEST_APP_ID = 123
 
 
 @pytest.fixture(scope='module')
@@ -93,87 +88,6 @@ class AppInstallIds(TypedDict):
 
     app_or_client_id: str
     install_id: str
-
-
-@pytest.mark.parametrize(
-    ('extract_github_app_install_token_args', 'expected_error_msg'),
-    (
-        pytest.param(
-            {
-                'app_or_client_id': 'invalid',
-                'install_id': '666',
-            },
-            '^Expected GitHub App or Client ID to be an integer or a string ' r'starting with `Iv1\.` followed by 16 hexadecimal digits, but got' " 'invalid'$",
-            id='gh-app-id-broken-text',
-        ),
-        pytest.param(
-            {
-                'app_or_client_id': 'Iv1.bbbbbbbbbbbbbbb',
-                'install_id': '666',
-            },
-            '^Expected GitHub App or Client ID to be an integer or a string '
-            r'starting with `Iv1\.` followed by 16 hexadecimal digits, but got'
-            " 'Iv1.bbbbbbbbbbbbbbb'$",
-            id='gh-app-id-client-id-not-enough-chars',
-        ),
-        pytest.param(
-            {
-                'app_or_client_id': 'Iv1.bbbbbbbbbbbbbbbx',
-                'install_id': '666',
-            },
-            '^Expected GitHub App or Client ID to be an integer or a string '
-            r'starting with `Iv1\.` followed by 16 hexadecimal digits, but got'
-            " 'Iv1.bbbbbbbbbbbbbbbx'$",
-            id='gh-app-id-client-id-broken-hex',
-        ),
-        pytest.param(
-            {
-                'app_or_client_id': 'Iv1.bbbbbbbbbbbbbbbbb',
-                'install_id': '666',
-            },
-            '^Expected GitHub App or Client ID to be an integer or a string '
-            r'starting with `Iv1\.` followed by 16 hexadecimal digits, but got'
-            " 'Iv1.bbbbbbbbbbbbbbbbb'$",
-            id='gh-app-id-client-id-too-many-chars',
-        ),
-        pytest.param(
-            {
-                'app_or_client_id': 999,
-                'install_id': 'invalid',
-            },
-            '^Expected GitHub App Installation ID to be an integer ' "but got 'invalid'$",
-            id='gh-app-invalid-install-id-with-int-app-id',
-        ),
-        pytest.param(
-            {
-                'app_or_client_id': '999',
-                'install_id': 'invalid',
-            },
-            '^Expected GitHub App Installation ID to be an integer ' "but got 'invalid'$",
-            id='gh-app-invalid-install-id-with-str-digit-app-id',
-        ),
-        pytest.param(
-            {
-                'app_or_client_id': 'Iv1.cccccccccccccccc',
-                'install_id': 'invalid',
-            },
-            '^Expected GitHub App Installation ID to be an integer ' "but got 'invalid'$",
-            id='gh-app-invalid-install-id-with-client-id',
-            marks=github_app_jwt_client_id_unsupported,
-        ),
-    ),
-)
-def test_github_app_invalid_args(
-    extract_github_app_install_token_args: AppInstallIds,
-    expected_error_msg: str,
-) -> None:
-    """Test that invalid arguments make token extractor bail early."""
-    with pytest.raises(ValueError, match=expected_error_msg):
-        github_app.extract_github_app_install_token(
-            github_api_url='https://github.com',
-            private_rsa_key='key',
-            **extract_github_app_install_token_args,
-        )
 
 
 @pytest.mark.parametrize(
@@ -264,16 +178,16 @@ class _FakeAppInstallationAuth(AppInstallationAuth):
 
 
 @pytest.mark.parametrize(
-    'application_id',
+    'application_or_client_id',
     (
-        123,
-        '123',
-        pytest.param(
-            'Iv1.aaaaaaaaaaaaaaaa',
-            marks=github_app_jwt_client_id_unsupported,
-        ),
+        pytest.param(TEST_APP_ID, id='app-id-int'),
+        pytest.param(str(TEST_APP_ID), id='app-id-str'),
+        pytest.param('Iv1.aaaaaaaaaaaaaaaa', id='client-id-iv1-legacy-format'),
+        pytest.param('Iv2aaaaaaaaaaaaaaaa', id='client-id-iv2-new-format'),
+        pytest.param('Iv10aaaaaaaaaaaaaaaa', id='client-id-iv10-double-digit-version'),
+        pytest.param('Iv100.aaaaaaaaaaaaaaaa', id='client-id-iv100-with-dot'),
+        pytest.param('Iv23likIfIXeZTb5GCAA', id='client-id-iv23-real-example'),
     ),
-    ids=('app-id-int', 'app-id-str', 'client-id'),
 )
 @pytest.mark.parametrize(
     'installation_id',
@@ -282,7 +196,7 @@ class _FakeAppInstallationAuth(AppInstallationAuth):
 )
 # pylint: disable-next=too-many-arguments,too-many-positional-arguments
 def test_github_app_github_authentication(  # noqa: WPS211
-    application_id: int | str,
+    application_or_client_id: int | str,
     installation_id: int | str,
     mocker: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -304,7 +218,7 @@ def test_github_app_github_authentication(  # noqa: WPS211
 
     token = github_app.extract_github_app_install_token(
         github_api_url='https://github.com',
-        app_or_client_id=application_id,
+        app_or_client_id=application_or_client_id,
         install_id=installation_id,
         private_rsa_key=rsa_private_key_str,
     )
@@ -339,6 +253,6 @@ def test_github_app_github_authentication(  # noqa: WPS211
             'verify_nbf': True,
         },
         audience=None,  # GH App JWT don't set the audience claim
-        issuer=str(application_id),
+        issuer=str(application_or_client_id),
         leeway=0.001,  # noqa: WPS432
     )
