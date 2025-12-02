@@ -60,10 +60,9 @@ python-tss-sdk>=1.2.1
 python-ldap
 pyyaml>=6.0.2
 pyzstd  # otel collector log file compression library
-receptorctl==1.6.2
-social-auth-core == 4.5.4 # hard pinned due to resolver picking CVE version when uncapped
-social-auth-app-django==5.4.2  # see UPGRADE BLOCKERs
-redis[hiredis]
+receptorctl
+sqlparse>=0.4.4   # Required by django https://github.com/ansible/awx/security/dependabot/96
+redis[hiredis]>=7.0  # requires 7.0+ for retry functionality on connection errors
 requests
 slack-sdk
 tacacs_plus==1.0  # UPGRADE BLOCKER: auth does not work with later versions

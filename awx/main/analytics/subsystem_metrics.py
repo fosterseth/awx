@@ -1,5 +1,4 @@
 import itertools
-import redis
 import json
 import time
 import logging
@@ -13,6 +12,7 @@ from rest_framework.request import Request
 
 from awx.main.consumers import emit_channel_notification
 from awx.main.utils import is_testing
+from awx.main.utils.redis import get_redis_client
 
 root_key = settings.SUBSYSTEM_METRICS_REDIS_KEY_PREFIX
 logger = logging.getLogger('awx.main.analytics')
@@ -197,8 +197,8 @@ class Metrics(MetricsNamespace):
     def __init__(self, namespace, auto_pipe_execute=False, instance_name=None, metrics_have_changed=True, **kwargs):
         MetricsNamespace.__init__(self, namespace)
 
-        self.pipe = redis.Redis.from_url(settings.BROKER_URL).pipeline()
-        self.conn = redis.Redis.from_url(settings.BROKER_URL)
+        self.conn = get_redis_client()
+        self.pipe = self.conn.pipeline()
         self.last_pipe_execute = time.time()
         # track if metrics have been modified since last saved to redis
         # start with True so that we get an initial save to redis
