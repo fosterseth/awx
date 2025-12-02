@@ -23,6 +23,8 @@ from rest_framework import status
 
 import requests
 
+from ansible_base.lib.utils.schema import extend_schema_if_available
+
 from awx import MODE
 from awx.api.generics import APIView
 from awx.conf.registry import settings_registry
@@ -46,8 +48,10 @@ class ApiRootView(APIView):
     name = _('REST API')
     versioning_class = URLPathVersioning
     swagger_topic = 'Versioning'
+    resource_purpose = 'api root and version information'
 
     @method_decorator(ensure_csrf_cookie)
+    @extend_schema_if_available(extensions={"x-ai-description": "List supported API versions"})
     def get(self, request, format=None):
         '''List supported API versions'''
         v2 = reverse('api:api_v2_root_view', request=request, kwargs={'version': 'v2'})
@@ -82,7 +86,9 @@ class ApiOAuthAuthorizationRootView(APIView):
 class ApiVersionRootView(APIView):
     permission_classes = (AllowAny,)
     swagger_topic = 'Versioning'
+    resource_purpose = 'api top-level resources'
 
+    @extend_schema_if_available(extensions={"x-ai-description": "List top-level API resources"})
     def get(self, request, format=None):
         '''List top level resources'''
         data = OrderedDict()
@@ -144,6 +150,7 @@ class ApiVersionRootView(APIView):
 
 class ApiV2RootView(ApiVersionRootView):
     name = _('Version 2')
+    resource_purpose = 'api v2 root'
 
 
 class ApiV2PingView(APIView):
@@ -155,7 +162,11 @@ class ApiV2PingView(APIView):
     authentication_classes = ()
     name = _('Ping')
     swagger_topic = 'System Configuration'
+    resource_purpose = 'basic instance information'
 
+    @extend_schema_if_available(
+        extensions={'x-ai-description': 'Return basic information about this instance'},
+    )
     def get(self, request, format=None):
         """Return some basic information about this instance
 
@@ -190,12 +201,16 @@ class ApiV2SubscriptionView(APIView):
     permission_classes = (IsAuthenticated,)
     name = _('Subscriptions')
     swagger_topic = 'System Configuration'
+    resource_purpose = 'aap subscription validation'
 
     def check_permissions(self, request):
         super(ApiV2SubscriptionView, self).check_permissions(request)
         if not request.user.is_superuser and request.method.lower() not in {'options', 'head'}:
             self.permission_denied(request)  # Raises PermissionDenied exception.
 
+    @extend_schema_if_available(
+        extensions={'x-ai-description': 'List valid AAP subscriptions'},
+    )
     def post(self, request):
         data = request.data.copy()
 
@@ -262,12 +277,16 @@ class ApiV2AttachView(APIView):
     permission_classes = (IsAuthenticated,)
     name = _('Attach Subscription')
     swagger_topic = 'System Configuration'
+    resource_purpose = 'subscription attachment'
 
     def check_permissions(self, request):
         super(ApiV2AttachView, self).check_permissions(request)
         if not request.user.is_superuser and request.method.lower() not in {'options', 'head'}:
             self.permission_denied(request)  # Raises PermissionDenied exception.
 
+    @extend_schema_if_available(
+        extensions={'x-ai-description': 'Attach a subscription'},
+    )
     def post(self, request):
         data = request.data.copy()
         subscription_id = data.get('subscription_id', None)
@@ -317,12 +336,16 @@ class ApiV2ConfigView(APIView):
     permission_classes = (IsAuthenticated,)
     name = _('Configuration')
     swagger_topic = 'System Configuration'
+    resource_purpose = 'system configuration and license management'
 
     def check_permissions(self, request):
         super(ApiV2ConfigView, self).check_permissions(request)
         if not request.user.is_superuser and request.method.lower() not in {'options', 'head', 'get'}:
             self.permission_denied(request)  # Raises PermissionDenied exception.
 
+    @extend_schema_if_available(
+        extensions={'x-ai-description': 'Return various configuration settings'},
+    )
     def get(self, request, format=None):
         '''Return various sitewide configuration settings'''
 
@@ -374,6 +397,9 @@ class ApiV2ConfigView(APIView):
 
         return Response(data)
 
+    @extend_schema_if_available(
+        extensions={'x-ai-description': 'Upload a subscription manifest'},
+    )
     def post(self, request):
         if not isinstance(request.data, dict):
             return Response({"error": _("Invalid subscription data")}, status=status.HTTP_400_BAD_REQUEST)
@@ -419,6 +445,9 @@ class ApiV2ConfigView(APIView):
         logger.warning(smart_str(u"Invalid subscription submitted."), extra=dict(actor=request.user.username))
         return Response({"error": _("Invalid subscription")}, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema_if_available(
+        extensions={'x-ai-description': 'Remove the current subscription'},
+    )
     def delete(self, request):
         try:
             settings.LICENSE = {}

@@ -1027,6 +1027,9 @@ class GenericCancelView(RetrieveAPIView):
     # In subclass set model, serializer_class
     obj_permission_type = 'cancel'
 
+    def get(self, request, *args, **kwargs):
+        return super(GenericCancelView, self).get(request, *args, **kwargs)
+
     @transaction.non_atomic_requests
     def dispatch(self, *args, **kwargs):
         return super(GenericCancelView, self).dispatch(*args, **kwargs)
