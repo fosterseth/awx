@@ -4,7 +4,7 @@ from django.test import override_settings
 from awx.main.models import User
 
 
-@override_settings(FLAGS={})
+@override_settings(FLAGS={}, FLAG_SOURCES=['flags.sources.SettingsFlagsSource'])
 @pytest.mark.django_db
 def test_feature_flags_list_endpoint(get):
     bob = User.objects.create(username='bob', password='test_user', is_superuser=False)
@@ -15,6 +15,7 @@ def test_feature_flags_list_endpoint(get):
 
 
 @override_settings(
+    FLAG_SOURCES=['flags.sources.SettingsFlagsSource'],
     FLAGS={
         "FEATURE_SOME_PLATFORM_FLAG_ENABLED": [
             {"condition": "boolean", "value": False},
@@ -23,7 +24,7 @@ def test_feature_flags_list_endpoint(get):
         "FEATURE_SOME_PLATFORM_FLAG_FOO_ENABLED": [
             {"condition": "boolean", "value": True},
         ],
-    }
+    },
 )
 @pytest.mark.django_db
 def test_feature_flags_list_endpoint_override(get):
