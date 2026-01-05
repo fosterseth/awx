@@ -357,8 +357,9 @@ def test_job_id_does_not_exist():
     save_indirect_host_entries(10000001)
 
 
+@mock.patch('awx.main.tasks.host_indirect.flag_enabled', return_value=True)
 @pytest.mark.django_db
-def test_cleanup_old_audit_records(old_audit_record, new_audit_record):
+def test_cleanup_old_audit_records(mock_flag, old_audit_record, new_audit_record):
     count_before_cleanup = IndirectManagedNodeAudit.objects.count()
     assert count_before_cleanup == 2
     cleanup_and_save_indirect_host_entries_fallback()
