@@ -471,6 +471,7 @@ class TestGenericRun:
         task.instance = job
         task.update_model = mock.Mock(return_value=job)
         task.model.objects.get = mock.Mock(return_value=job)
+        task.build_project_dir = mock.Mock()
         task.build_private_data_files = mock.Mock(side_effect=OSError())
 
         with mock.patch('awx.main.tasks.jobs.shutil.copytree'), mock.patch('awx.main.tasks.jobs.evaluate_policy'):
@@ -575,7 +576,8 @@ class TestGenericRun:
         task._write_extra_vars_file = mock.Mock()
 
         with mock.patch('awx.main.tasks.jobs.settings.AWX_TASK_ENV', {'FOO': 'BAR'}):
-            env = task.build_env(job, private_data_dir)
+            with mock.patch('awx.main.tasks.jobs.flag_enabled', return_value=False):
+                env = task.build_env(job, private_data_dir)
         assert env['FOO'] == 'BAR'
 
 
@@ -641,6 +643,11 @@ class TestAdhocRun(TestJobExecution):
 
 
 class TestJobCredentials(TestJobExecution):
+    @pytest.fixture(autouse=True)
+    def mock_flag_enabled(self):
+        with mock.patch('awx.main.tasks.jobs.flag_enabled', return_value=False):
+            yield
+
     @pytest.fixture
     def job(self, execution_environment):
         job = Job(pk=1, inventory=Inventory(pk=1), project=Project(pk=1))
@@ -1672,6 +1679,11 @@ class TestProjectUpdateRefspec(TestJobExecution):
 
 
 class TestInventoryUpdateCredentials(TestJobExecution):
+    @pytest.fixture(autouse=True)
+    def mock_flag_enabled(self):
+        with mock.patch('awx.main.tasks.jobs.flag_enabled', return_value=False):
+            yield
+
     @pytest.fixture
     def inventory_update(self, execution_environment):
         return InventoryUpdate(pk=1, execution_environment=execution_environment, inventory_source=InventorySource(pk=1, inventory=Inventory(pk=1)))
