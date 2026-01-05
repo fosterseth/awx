@@ -65,6 +65,8 @@ sqlparse>=0.4.4   # Required by django https://github.com/ansible/awx/security/d
 redis[hiredis]>=7.0  # requires 7.0+ for retry functionality on connection errors
 requests
 slack-sdk
+social-auth-app-django==5.4.2  # see UPGRADE BLOCKERs
+social-auth-core==4.5.4  # hard pinned due to resolver picking CVE version when uncapped
 tacacs_plus==1.0  # UPGRADE BLOCKER: auth does not work with later versions
 twilio
 twisted[tls]>=24.7.0  # CVE-2024-41810
