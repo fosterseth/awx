@@ -1,13 +1,36 @@
 import yaml
 import time
 
+import pytest
+from django.apps import apps
+
 from awx.main.tests.live.tests.conftest import wait_for_events
 from awx.main.tasks.host_indirect import build_indirect_host_data, save_indirect_host_entries
 from awx.main.models.indirect_managed_node_audit import IndirectManagedNodeAudit
 from awx.main.models import Job
 
 
-def test_indirect_host_counting(live_tmp_folder, run_job_from_playbook):
+@pytest.fixture
+def enable_indirect_host_counting():
+    """Enable FEATURE_INDIRECT_NODE_COUNTING_ENABLED flag for the test.
+
+    django-ansible-base commit f1f55b0d (AAP-45875) changed flags to be stored
+    in the database with this flag defaulting to False.
+    """
+    AAPFlag = apps.get_model('dab_feature_flags', 'AAPFlag')
+    flag = AAPFlag.objects.filter(name='FEATURE_INDIRECT_NODE_COUNTING_ENABLED').first()
+    if flag:
+        original_value = flag.value
+        flag.value = 'True'
+        flag.save()
+        yield
+        flag.value = original_value
+        flag.save()
+    else:
+        yield
+
+
+def test_indirect_host_counting(live_tmp_folder, run_job_from_playbook, enable_indirect_host_counting):
     run_job_from_playbook('test_indirect_host_counting', 'run_task.yml', scm_url=f'file://{live_tmp_folder}/test_host_query')
     job = Job.objects.filter(name__icontains='test_indirect_host_counting').order_by('-created').first()
     wait_for_events(job)  # We must wait for events because system tasks iterate on job.job_events.filter(...)
