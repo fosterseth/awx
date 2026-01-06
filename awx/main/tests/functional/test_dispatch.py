@@ -5,7 +5,7 @@ import signal
 import time
 import yaml
 from unittest import mock
-
+from flags.state import disable_flag, enable_flag
 from django.utils.timezone import now as tz_now
 import pytest
 
@@ -299,7 +299,15 @@ class TestTaskDispatcher:
         assert str(result) == "No module named 'awx.foo'"  # noqa
 
 
+@pytest.mark.django_db
 class TestTaskPublisher:
+    @pytest.fixture(autouse=True)
+    def _disable_dispatcherd(self):
+        flag_name = "FEATURE_DISPATCHERD_ENABLED"
+        disable_flag(flag_name)
+        yield
+        enable_flag(flag_name)
+
     def test_function_callable(self):
         assert add(2, 2) == 4
 

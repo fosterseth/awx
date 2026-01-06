@@ -2,7 +2,7 @@ import yaml
 import time
 
 import pytest
-from django.apps import apps
+from flags.state import enable_flag, disable_flag
 
 from awx.main.tests.live.tests.conftest import wait_for_events
 from awx.main.tasks.host_indirect import build_indirect_host_data, save_indirect_host_entries
@@ -12,22 +12,11 @@ from awx.main.models import Job
 
 @pytest.fixture
 def enable_indirect_host_counting():
-    """Enable FEATURE_INDIRECT_NODE_COUNTING_ENABLED flag for the test.
-
-    django-ansible-base commit f1f55b0d (AAP-45875) changed flags to be stored
-    in the database with this flag defaulting to False.
-    """
-    AAPFlag = apps.get_model('dab_feature_flags', 'AAPFlag')
-    flag = AAPFlag.objects.filter(name='FEATURE_INDIRECT_NODE_COUNTING_ENABLED').first()
-    if flag:
-        original_value = flag.value
-        flag.value = 'True'
-        flag.save()
-        yield
-        flag.value = original_value
-        flag.save()
-    else:
-        yield
+    """Enable FEATURE_INDIRECT_NODE_COUNTING_ENABLED flag for the test."""
+    flag_name = "FEATURE_INDIRECT_NODE_COUNTING_ENABLED"
+    enable_flag(flag_name)
+    yield
+    disable_flag(flag_name)
 
 
 def test_indirect_host_counting(live_tmp_folder, run_job_from_playbook, enable_indirect_host_counting):

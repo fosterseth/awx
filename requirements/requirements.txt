@@ -169,7 +169,7 @@ django-crum==0.7.9
     #   django-ansible-base
 django-extensions==3.2.3
     # via -r /awx_devel/requirements/requirements.in
-django-flags==5.0.13
+django-flags==5.1.0
     # via
     #   -r /awx_devel/requirements/requirements.in
     #   django-ansible-base

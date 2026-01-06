@@ -3,6 +3,7 @@ from functools import reduce
 from unittest import mock
 
 import pytest
+from flags.state import enable_flag, disable_flag
 
 from django.utils.timezone import now, timedelta
 
@@ -357,9 +358,17 @@ def test_job_id_does_not_exist():
     save_indirect_host_entries(10000001)
 
 
-@mock.patch('awx.main.tasks.host_indirect.flag_enabled', return_value=True)
+@pytest.fixture
+def enable_indirect_host_counting():
+    """Enable FEATURE_INDIRECT_NODE_COUNTING_ENABLED flag for the test."""
+    flag_name = "FEATURE_INDIRECT_NODE_COUNTING_ENABLED"
+    enable_flag(flag_name)
+    yield
+    disable_flag(flag_name)
+
+
 @pytest.mark.django_db
-def test_cleanup_old_audit_records(mock_flag, old_audit_record, new_audit_record):
+def test_cleanup_old_audit_records(enable_indirect_host_counting, old_audit_record, new_audit_record):
     count_before_cleanup = IndirectManagedNodeAudit.objects.count()
     assert count_before_cleanup == 2
     cleanup_and_save_indirect_host_entries_fallback()
