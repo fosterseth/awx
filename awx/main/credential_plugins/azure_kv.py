@@ -65,6 +65,15 @@ def _initialize_credential(
     secret: str = '',
 ) -> TokenCredential:
     explicit_credentials_provided = all((tenant, client, secret))
+    any_credentials_provided = any((tenant, client, secret))
+
+    # Validate that either all or none of the credentials are provided
+    if any_credentials_provided and not explicit_credentials_provided:
+        raise RuntimeError(
+            'You are not operating on an Azure VM, so the Managed Identity '
+            'feature is unavailable. Please provide the full Client ID, '
+            'Client Secret, and Tenant ID or run the software on an Azure VM.',
+        )
 
     if explicit_credentials_provided:
         return ClientSecretCredential(
