@@ -6,8 +6,8 @@ asciichartpy<=1.5.7 # Unable to build from source for >1.5.7 due to missing READ
 asn1
 azure-identity
 azure-keyvault
-boto3
-botocore
+boto3>=1.40.46
+botocore>=1.40.46
 channels
 channels-redis
 cryptography>=42.0.4  # CVE-2024-26130
@@ -70,11 +70,11 @@ social-auth-core==4.5.4  # hard pinned due to resolver picking CVE version when 
 tacacs_plus==1.0  # UPGRADE BLOCKER: auth does not work with later versions
 twilio
 twisted[tls]>=24.7.0  # CVE-2024-41810
-urllib3>=1.26.19 # CVE-2024-37891
+urllib3>=2.6.3 # CVE-2025-66471
 uWSGI>=2.0.28
 uwsgitop
 wheel>=0.38.1  # CVE-2022-40898
-pip==21.2.4  # see UPGRADE BLOCKERs
+pip==25.3  # see UPGRADE BLOCKERs
 setuptools==80.9.0  # see UPGRADE BLOCKERs
 setuptools_scm[toml]  # see UPGRADE BLOCKERs, xmlsec build dep
 setuptools-rust>=0.11.4  # cryptography build dep
