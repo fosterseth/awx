@@ -88,7 +88,7 @@ RUN cd /tmp && make requirements_awx_dev
 # Use the distro provided npm to bootstrap our required version of node
 
 {% if not headless|bool %}
-RUN npm install -g n && n 16.13.1
+RUN dnf -y update && dnf module -y enable nodejs:18 && dnf module -y install nodejs:18/common && dnf install -y make git
 {% endif %}
 
 # Copy source into builder, build sdist, install it into awx venv
@@ -152,7 +152,8 @@ RUN rm -rf /root/.cache && rm -rf /tmp/*
 
 {% if (build_dev|bool) or (kube_dev|bool) %}
 # Install development/test requirements
-RUN dnf -y install \
+RUN dnf module -y enable nodejs:18 && dnf module -y install nodejs:18/common && \
+    dnf -y install \
     crun \
     gdb \
     gtk3 \
@@ -167,7 +168,6 @@ RUN dnf -y install \
     vim \
     nmap-ncat \
     libpq-devel \
-    nodejs \
     nss \
     make \
     patch \
@@ -175,8 +175,7 @@ RUN dnf -y install \
     tmux \
     wget \
     diffutils \
-    unzip && \
-    npm install -g n && n 16.13.1 && npm install -g npm@8.5.0 && dnf remove -y nodejs
+    unzip
 
 RUN pip3.11 install -vv git+https://github.com/coderanger/supervisor-stdout.git@973ba19967cdaf46d9c1634d1675fc65b9574f6e
 RUN pip3.11 install -vv black setuptools-scm build
