@@ -16,12 +16,12 @@ _cleanup() {
 generate_requirements() {
   venv="`pwd`/venv"
   echo $venv
-  /usr/bin/python3 -m venv "${venv}"
+  /usr/bin/python3.11 -m venv "${venv}"
   # shellcheck disable=SC1090
   source ${venv}/bin/activate
 
   # FIXME: https://github.com/jazzband/pip-tools/issues/1558
-  ${venv}/bin/python3 -m pip install -U 'pip<22.0' pip-tools
+  ${venv}/bin/python3 -m pip install -U 'pip==25.3' pip-tools
 
   ${pip_compile} $1 --output-file requirements.txt
   # consider the git requirements for purposes of resolving deps

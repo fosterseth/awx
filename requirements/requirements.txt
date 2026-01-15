@@ -285,6 +285,9 @@ jsonschema-specifications==2023.12.1
     # via jsonschema
 jwcrypto==1.5.4
     # via django-oauth-toolkit
+    # via
+    #   -r /awx_devel/requirements/requirements_git.txt
+    #   openshift
 lockfile==0.12.2
     # via python-daemon
 lxml==4.9.4
@@ -566,7 +569,7 @@ twisted[tls]==24.7.0
     #   daphne
 txaio==23.1.1
     # via autobahn
-typing-extensions==4.9.0
+typing-extensions==4.15.0
     # via
     #   aiosignal
     #   azure-core
