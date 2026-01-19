@@ -12,7 +12,6 @@ from .custom import CustomAction
 from .format import add_output_formatting_arguments
 from .resource import DEPRECATED_RESOURCES_REVERSE
 
-
 UNIQUENESS_RULES = {
     'me': ('id', 'username'),
     'users': ('id', 'username'),

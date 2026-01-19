@@ -10,7 +10,6 @@ import logging
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin
 
-
 logger = logging.getLogger(__name__)
 
 

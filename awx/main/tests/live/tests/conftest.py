@@ -18,7 +18,6 @@ from awx.main.tests import data
 
 from awx.main.models import Project, JobTemplate, Organization, Inventory
 
-
 logger = logging.getLogger(__name__)
 
 

@@ -565,7 +565,7 @@ def hosts(group_factory):
         hosts = []
         for i in range(0, host_count):
             name = '%s-host-%s' % (group1.name, i)
-            (host, created) = group1.inventory.hosts.get_or_create(name=name)
+            host, created = group1.inventory.hosts.get_or_create(name=name)
             if created:
                 group1.hosts.add(host)
             hosts.append(host)

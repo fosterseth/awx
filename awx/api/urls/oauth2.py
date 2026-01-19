@@ -13,7 +13,6 @@ from awx.api.views import (
     OAuth2TokenActivityStreamList,
 )
 
-
 urls = [
     re_path(r'^applications/$', OAuth2ApplicationList.as_view(), name='o_auth2_application_list'),
     re_path(r'^applications/(?P<pk>[0-9]+)/$', OAuth2ApplicationDetail.as_view(), name='o_auth2_application_detail'),

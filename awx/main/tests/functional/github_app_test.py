@@ -28,7 +28,6 @@ from jwt import decode as decode_jwt
 
 from awx.main.credential_plugins import github_app
 
-
 RSA_PUBLIC_EXPONENT = 65_537  # noqa: WPS303
 MINIMUM_RSA_KEY_SIZE = 1024  # the lowest value chosen for performance in tests
 TEST_APP_ID = 123

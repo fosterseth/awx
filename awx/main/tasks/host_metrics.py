@@ -13,7 +13,6 @@ from awx.main.tasks.helpers import is_run_threshold_reached
 from awx.conf.license import get_license
 from awx.main.utils.db import bulk_update_sorted_by_id
 
-
 logger = logging.getLogger('awx.main.tasks.host_metrics')
 
 

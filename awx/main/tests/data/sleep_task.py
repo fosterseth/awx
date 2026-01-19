@@ -4,7 +4,6 @@ import logging
 from awx.main.dispatch import get_task_queuename
 from awx.main.dispatch.publish import task
 
-
 logger = logging.getLogger(__name__)
 
 

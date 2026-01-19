@@ -5,7 +5,6 @@ from django.urls import re_path
 
 from awx.sso.views import sso_complete, sso_error, sso_inactive, saml_metadata
 
-
 app_name = 'sso'
 urlpatterns = [
     re_path(r'^complete/$', sso_complete, name='sso_complete'),

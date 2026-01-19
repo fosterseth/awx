@@ -10,7 +10,6 @@ import logging
 from typing import Dict, Optional
 from awx.main.utils.gateway_client import GatewayClient, GatewayAPIError
 
-
 logger = logging.getLogger(__name__)
 
 

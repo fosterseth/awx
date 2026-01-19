@@ -38,7 +38,7 @@ def test_python_and_js_licenses():
         for txt_file in glob.glob('%s/*.txt' % path):
             filename = txt_file.split('/')[-1]
             name = filename[:-4].lower()
-            (is_gpl, is_lgpl) = check_license(txt_file)
+            is_gpl, is_lgpl = check_license(txt_file)
             list[name] = {
                 'name': name,
                 'filename': filename,
@@ -62,9 +62,9 @@ def test_python_and_js_licenses():
                     version = version[2:]
                 if parsed_requirement.link:
                     if str(parsed_requirement.link).startswith(('http://', 'https://')):
-                        (name, version) = str(parsed_requirement.requirement).split('==', 1)
+                        name, version = str(parsed_requirement.requirement).split('==', 1)
                     else:
-                        (name, version) = parsed_requirement.link.filename.split('@', 1)
+                        name, version = parsed_requirement.link.filename.split('@', 1)
                     if name.endswith('.git'):
                         name = name[:-4]
                     if name == 'receptor':

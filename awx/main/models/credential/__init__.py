@@ -53,7 +53,6 @@ from . import injectors as builtin_injectors
 from ansible_base.resource_registry.tasks.sync import get_resource_server_client
 from ansible_base.resource_registry.utils.settings import resource_server_defined
 
-
 __all__ = ['Credential', 'CredentialType', 'CredentialInputSource', 'build_safe_env']
 
 logger = logging.getLogger('awx.main.models.credential')

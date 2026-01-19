@@ -3,7 +3,6 @@ import json
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
-
 settings_dict = {
     "SOCIAL_AUTH_SAML_SP_ENTITY_ID": "SP_ENTITY_ID",
     "SOCIAL_AUTH_SAML_SP_PUBLIC_CERT": "SP_PUBLIC_CERT",

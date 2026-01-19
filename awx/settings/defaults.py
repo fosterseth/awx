@@ -12,7 +12,6 @@ from datetime import timedelta
 # python-ldap
 import ldap
 
-
 DEBUG = True
 SQL_DEBUG = DEBUG
 

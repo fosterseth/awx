@@ -26,7 +26,6 @@ from awx.main.consumers import emit_channel_notification
 
 import pytz
 
-
 logger = logging.getLogger('awx.main.models.schedule')
 
 __all__ = ['Schedule']
