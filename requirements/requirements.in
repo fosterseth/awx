@@ -50,6 +50,7 @@ pexpect==4.7.0  # see library notes
 prometheus_client
 psycopg
 psutil
+pyasn1>=0.6.2  # CVE-2026-2349
 pygerduty
 PyGithub <= 2.6.0
 pyopenssl>=23.2.0  # resolve dep conflict from cryptography pin above
