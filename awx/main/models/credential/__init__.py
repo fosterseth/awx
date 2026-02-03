@@ -1363,6 +1363,32 @@ ManagedCredentialType(
     },
 )
 
+ManagedCredentialType(
+    namespace='hcp_terraform',
+    kind='cloud',
+    name=gettext_noop('HCP Terraform'),
+    managed=True,
+    inputs={
+        'fields': [
+            {
+                'id': 'hostname',
+                'label': gettext_noop('Hostname'),
+                'type': 'string',
+                'help_text': gettext_noop('The hostname of your HCP Terraform instance (e.g., app.terraform.io)'),
+                'default': 'app.terraform.io',
+            },
+            {
+                'id': 'token',
+                'label': gettext_noop('API Token'),
+                'type': 'string',
+                'secret': True,
+                'help_text': gettext_noop('HCP Terraform API Token'),
+            },
+        ],
+        'required': ['token'],
+    },
+)
+
 
 class CredentialInputSource(PrimordialModel):
     class Meta:

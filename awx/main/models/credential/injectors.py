@@ -137,3 +137,8 @@ def terraform(cred, env, private_data_dir):
             os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
             f.write(cred.get_input('gce_credentials'))
         env['GOOGLE_BACKEND_CREDENTIALS'] = to_container_path(path, private_data_dir)
+
+
+def hcp_terraform(cred, env, private_data_dir):
+    env['TF_TOKEN'] = cred.get_input('token', default='')
+    env['TF_HOSTNAME'] = cred.get_input('hostname', default='app.terraform.io')
