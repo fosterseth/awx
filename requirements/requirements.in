@@ -1,6 +1,7 @@
-aiohttp>=3.11.6 # CVE-2024-52304
+aiohttp>=3.13.3 # CVE-2025-69223
 ansiconv==1.0.0  # UPGRADE BLOCKER: from 2013, consider replacing instead of upgrading
 ansible-runner==2.4.2
+asgiref>=3.11.0, <4  # capped by django 4.2.26 and channels 4.3.2
 jq  # used for indirect host counting feature
 asciichartpy<=1.5.7 # Unable to build from source for >1.5.7 due to missing README.md in PyPI sdist
 asn1
@@ -8,6 +9,7 @@ azure-identity
 azure-keyvault
 boto3>=1.40.46
 botocore>=1.40.46
+cachetools  # used for TTL caching in awx/conf/settings.py
 channels
 channels-redis
 cryptography>=42.0.4  # CVE-2024-26130
@@ -30,12 +32,15 @@ djangorestframework-yaml
 drf-spectacular>=0.27.0
 dynaconf<4
 filelock
+frozenlist>=1.4.0  # Python 3.12 requires 1.4.0+, transitive dep from aiohttp
 GitPython>=3.1.37  # CVE-2023-41040
 grpcio>=1.68.0  # CVE-2024-11407
 irc
+jaraco.functools>=3.6.0  # setuptools 80.9.0 requires splat function added in 3.6.0
 jinja2>=3.1.6  # CVE-2025-27516
 JSON-log-formatter
 jsonschema
+lxml>=4.9.3  # Python 3.12 requires 4.9.3+, transitive dep from python3-saml/xmlsec
 Markdown  # used for formatting API help
 maturin  # pydantic-core build dep
 msgpack
@@ -47,7 +52,7 @@ opentelemetry-sdk~=1.24
 opentelemetry-instrumentation-logging
 opentelemetry-exporter-otlp
 pexpect==4.7.0  # see library notes
-prometheus_client
+prometheus-client
 psycopg
 psutil
 pyasn1>=0.6.2  # CVE-2026-2349
@@ -77,8 +82,8 @@ uwsgitop
 wheel>=0.46.2  # CVE-2026-24049
 pip==25.3  # see UPGRADE BLOCKERs
 setuptools==80.9.0  # see UPGRADE BLOCKERs
-setuptools_scm[toml]  # see UPGRADE BLOCKERs, xmlsec build dep
-setuptools-rust>=0.11.4  # cryptography build dep
+setuptools-scm[toml]  # see UPGRADE BLOCKERs, xmlsec build dep
+setuptools-rust  # cryptography build dep
 pkgconfig>=1.5.1  # xmlsec build dep - needed for offline build
 django-flags>=5.0.13
 protobuf>=4.25.8 # CVE-2025-4565

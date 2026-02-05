@@ -40,13 +40,19 @@ class HelpfulArgumentParser(ArgumentParser):
         self._print_message('\n')
         self.exit(2, '%s: %s\n' % (self.prog, message))
 
-    def _parse_known_args(self, args, ns):
+    def _parse_known_args(self, args, namespace, intermixed=False):
+        # Python 3.12+ added the intermixed parameter to _parse_known_args
         for arg in ('-h', '--help'):
             # the -h argument is extraneous; if you leave it off,
             # awx-cli will just print usage info
             if arg in args:
                 args.remove(arg)
-        return super(HelpfulArgumentParser, self)._parse_known_args(args, ns)
+        # Call parent method with proper signature for Python 3.12+
+        try:
+            return super(HelpfulArgumentParser, self)._parse_known_args(args, namespace, intermixed)
+        except TypeError:
+            # Fallback for Python < 3.12 that doesn't have intermixed parameter
+            return super(HelpfulArgumentParser, self)._parse_known_args(args, namespace)
 
 
 def color_enabled():
