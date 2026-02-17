@@ -12,7 +12,7 @@ class ConnectionException(exc.Common):
     pass
 
 
-class Token_Auth(requests.auth.AuthBase):
+class TokenAuth(requests.auth.AuthBase):
     def __init__(self, token):
         self.token = token
 
@@ -62,7 +62,7 @@ class Connection(object):
             else:
                 self.session.auth = (username, password)
         elif token:
-            self.session.auth = Token_Auth(token)
+            self.session.auth = TokenAuth(token)
         else:
             self.session.auth = None
 
