@@ -1,7 +1,11 @@
+from dispatcherd.config import setup as dispatcher_setup
+
 from django.apps import AppConfig
+from django.db import connection
 from django.utils.translation import gettext_lazy as _
+
+from awx.conf import fields, register
 from awx.main.utils.named_url_graph import _customize_graph, generate_graph
-from awx.conf import register, fields
 
 
 class MainConfig(AppConfig):
@@ -34,7 +38,18 @@ class MainConfig(AppConfig):
             category_slug='named-url',
         )
 
+    def configure_dispatcherd(self):
+        """Configure dispatcherd defaults so task submissions can talk to pg_notify."""
+        from awx.main.dispatch.config import get_dispatcherd_config
+
+        if connection.vendor != 'postgresql':
+            config_dict = get_dispatcherd_config(mock_publish=True)
+        else:
+            config_dict = get_dispatcherd_config()
+        dispatcher_setup(config_dict)
+
     def ready(self):
         super().ready()
 
+        self.configure_dispatcherd()
         self.load_named_url_feature()

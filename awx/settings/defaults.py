@@ -516,6 +516,16 @@ CELERYBEAT_SCHEDULE = {
     },
 }
 
+DISPATCHER_SCHEDULE = {}
+for options in CELERYBEAT_SCHEDULE.values():
+    dispatcher_options = options.copy()
+    task_name = options['task']
+    if task_name == 'awx.main.tasks.system.cluster_node_heartbeat':
+        task_name = 'awx.main.tasks.system.adispatch_cluster_node_heartbeat'
+        dispatcher_options['task'] = task_name
+    dispatcher_options['schedule'] = options['schedule'].total_seconds()
+    DISPATCHER_SCHEDULE[task_name] = dispatcher_options
+
 # Django Caching Configuration
 DJANGO_REDIS_IGNORE_EXCEPTIONS = True
 CACHES = {'default': {'BACKEND': 'awx.main.cache.AWXRedisCache', 'LOCATION': 'unix:///var/run/redis/redis.sock?db=1'}}
@@ -959,6 +969,7 @@ LOGGING = {
         'social': {'handlers': ['console', 'file', 'tower_warnings'], 'level': 'DEBUG'},
         'system_tracking_migrations': {'handlers': ['console', 'file', 'tower_warnings'], 'level': 'DEBUG'},
         'rbac_migrations': {'handlers': ['console', 'file', 'tower_warnings'], 'level': 'DEBUG'},
+        'dispatcherd': {'handlers': ['dispatcher', 'console'], 'level': 'INFO'},
     },
 }
 
@@ -1161,7 +1172,7 @@ HOST_METRIC_SUMMARY_TASK_INTERVAL = 7  # days
 # projects can take advantage.
 
 METRICS_SERVICE_CALLBACK_RECEIVER = 'callback_receiver'
-METRICS_SERVICE_DISPATCHER = 'dispatcher'
+METRICS_SERVICE_DISPATCHER = 'dispatcherd'
 METRICS_SERVICE_WEBSOCKETS = 'websockets'
 
 METRICS_SUBSYSTEM_CONFIG = {

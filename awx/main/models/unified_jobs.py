@@ -15,6 +15,9 @@ import subprocess
 import tempfile
 from collections import OrderedDict
 
+# Dispatcher
+from dispatcherd.factories import get_control_from_settings
+
 # Django
 from django.conf import settings
 from django.db import models, connection, transaction
@@ -61,6 +64,7 @@ from awx.main.constants import ACTIVE_STATES, CAN_CANCEL, JOB_VARIABLE_PREFIXES
 from awx.main.redact import UriCleaner, REPLACE_STR
 from awx.main.consumers import emit_channel_notification
 from awx.main.fields import AskForField, OrderedManyToManyField
+from flags.state import flag_enabled
 
 __all__ = ['UnifiedJobTemplate', 'UnifiedJob', 'StdoutMaxBytesExceeded']
 
@@ -1385,6 +1389,28 @@ class UnifiedJob(
             traceback=self.result_traceback,
         )
 
+    def get_start_kwargs(self):
+        needed = self.get_passwords_needed_to_start()
+        decrypted_start_args = decrypt_field(self, 'start_args')
+
+        if not decrypted_start_args or decrypted_start_args == '{}':
+            return None
+
+        try:
+            start_args = json.loads(decrypted_start_args)
+        except Exception:
+            logger.exception(f'Unexpected malformed start_args on unified_job={self.id}')
+            return None
+
+        opts = dict([(field, start_args.get(field, '')) for field in needed])
+
+        if not all(opts.values()):
+            missing_fields = ', '.join([k for k, v in opts.items() if not v])
+            self.job_explanation = u'Missing needed fields: %s.' % missing_fields
+            self.save(update_fields=['job_explanation'])
+
+        return opts
+
     def pre_start(self, **kwargs):
         if not self.can_start:
             self.job_explanation = u'%s is not in a startable state: %s, expecting one of %s' % (self._meta.verbose_name, self.status, str(('new', 'waiting')))
@@ -1483,25 +1509,36 @@ class UnifiedJob(
             self.refresh_from_db(fields=['celery_task_id'])
         self.cancel_dispatcher_process()
 
-    def cancel_dispatcher_process(self):
+    def cancel_dispatcher_process(self) -> bool:
         """Returns True if dispatcher running this job acknowledged request and sent SIGTERM"""
         if not self.celery_task_id:
-            return
-        canceled = []
-        if not connection.get_autocommit():
-            # this condition is purpose-written for the task manager, when it cancels jobs in workflows
-            ControlDispatcher('dispatcher', self.controller_node).cancel([self.celery_task_id], with_reply=False)
-            return True  # task manager itself needs to act under assumption that cancel was received
+            return False
 
-        try:
-            # Use control and reply mechanism to cancel and obtain confirmation
-            timeout = 5
-            canceled = ControlDispatcher('dispatcher', self.controller_node).cancel([self.celery_task_id])
-        except socket.timeout:
-            logger.error(f'could not reach dispatcher on {self.controller_node} within {timeout}s')
-        except Exception:
-            logger.exception("error encountered when checking task status")
-        return bool(self.celery_task_id in canceled)  # True or False, whether confirmation was obtained
+        if flag_enabled('FEATURE_DISPATCHERD_ENABLED'):
+            try:
+                logger.info(f'Sending cancel message to pg_notify channel {self.controller_node} for task {self.celery_task_id}')
+                ctl = get_control_from_settings(default_publish_channel=self.controller_node)
+                ctl.control('cancel', data={'uuid': self.celery_task_id})
+            except Exception:
+                logger.exception("Error sending cancel command to dispatcher")
+            return True  # did not actually get ack from dispatcherd but act as if we have
+
+        else:
+            canceled = []
+            if not connection.get_autocommit():
+                # this condition is purpose-written for the task manager, when it cancels jobs in workflows
+                ControlDispatcher('dispatcher', self.controller_node).cancel([self.celery_task_id], with_reply=False)
+                return True  # task manager itself needs to act under assumption that cancel was received
+
+            try:
+                # Use control and reply mechanism to cancel and obtain confirmation
+                timeout = 5
+                canceled = ControlDispatcher('dispatcher', self.controller_node).cancel([self.celery_task_id])
+            except socket.timeout:
+                logger.error(f'could not reach dispatcher on {self.controller_node} within {timeout}s')
+            except Exception:
+                logger.exception("error encountered when checking task status")
+            return bool(self.celery_task_id in canceled)  # True or False, whether confirmation was obtained
 
     def cancel(self, job_explanation=None, is_chain=False):
         if self.can_cancel:
@@ -1524,6 +1561,11 @@ class UnifiedJob(
                 # the job control process will use the cancel_flag to distinguish a shutdown from a cancel
                 self.save(update_fields=cancel_fields)
 
+            # Be extra sure we have the task id, in case job is transitioning into running right now
+            if not self.celery_task_id:
+                self.refresh_from_db(fields=['celery_task_id', 'controller_node'])
+
+            # send pg_notify message to cancel, will not send until transaction completes
             controller_notified = False
             if self.celery_task_id:
                 controller_notified = self.cancel_dispatcher_process()

@@ -69,6 +69,7 @@ pyzstd  # otel collector log file compression library
 receptorctl==1.6.3
 sqlparse>=0.4.4   # Required by django https://github.com/ansible/awx/security/dependabot/96
 redis[hiredis]>=7.0  # requires 7.0+ for retry functionality on connection errors
+dispatcherd[pg_notify]  # tasking system, previously part of AWX code base
 requests
 slack-sdk
 social-auth-app-django==5.4.2  # see UPGRADE BLOCKERs

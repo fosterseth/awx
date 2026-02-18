@@ -1,11 +1,14 @@
 import inspect
-import logging
 import json
+import logging
 import time
 from uuid import uuid4
 
-from django_guid import get_guid
+from dispatcherd.processors.blocker import Blocker
+from dispatcherd.publish import submit_task
+from dispatcherd.utils import resolve_callable
 from django.conf import settings
+from django_guid import get_guid
 
 from . import pg_bus_conn
 
@@ -57,13 +60,17 @@ class task:
         print(f"Time I was dispatched: {dispatch_time}")
     """
 
-    def __init__(self, queue=None, bind_kwargs=None):
+    def __init__(self, queue=None, bind_kwargs=None, timeout=None, on_duplicate=None):
         self.queue = queue
         self.bind_kwargs = bind_kwargs
+        self.timeout = timeout
+        self.on_duplicate = on_duplicate
 
     def __call__(self, fn=None):
         queue = self.queue
         bind_kwargs = self.bind_kwargs
+        timeout = self.timeout
+        on_duplicate = self.on_duplicate
 
         class PublisherMixin(object):
             queue = None
@@ -93,24 +100,40 @@ class task:
 
             @classmethod
             def apply_async(cls, args=None, kwargs=None, queue=None, uuid=None, **kw):
-                queue = queue or getattr(cls.queue, 'im_func', cls.queue)
-                if not queue:
+                try:
+                    from flags.state import flag_enabled
+
+                    if flag_enabled('FEATURE_DISPATCHERD_ENABLED'):
+                        actual_task = resolve_callable(cls.name)
+                        processor_options = ()
+                        if on_duplicate is not None:
+                            processor_options = (Blocker.Params(on_duplicate=on_duplicate),)
+                        return submit_task(
+                            actual_task,
+                            args=args,
+                            kwargs=kwargs,
+                            queue=queue,
+                            uuid=uuid,
+                            timeout=timeout,
+                            processor_options=processor_options,
+                            **kw,
+                        )
+                except Exception:
+                    logger.exception(f"[DISPATCHER] Failed to check for alternative dispatcherd implementation for {cls.name}")
+
+                queue_name = queue or getattr(cls.queue, 'im_func', cls.queue)
+                if not queue_name:
                     msg = f'{cls.name}: Queue value required and may not be None'
                     logger.error(msg)
                     raise ValueError(msg)
                 obj = cls.get_async_body(args=args, kwargs=kwargs, uuid=uuid, **kw)
-                if callable(queue):
-                    queue = queue()
+                if callable(queue_name):
+                    queue_name = queue_name()
                 if not settings.DISPATCHER_MOCK_PUBLISH:
                     with pg_bus_conn() as conn:
-                        conn.notify(queue, json.dumps(obj))
-                return (obj, queue)
+                        conn.notify(queue_name, json.dumps(obj))
+                return (obj, queue_name)
 
-        # If the object we're wrapping *is* a class (e.g., RunJob), return
-        # a *new* class that inherits from the wrapped class *and* BaseTask
-        # In this way, the new class returned by our decorator is the class
-        # being decorated *plus* PublisherMixin so cls.apply_async() and
-        # cls.delay() work
         bases = []
         ns = {'name': serialize_task(fn), 'queue': queue}
         if inspect.isclass(fn):
@@ -120,9 +143,6 @@ class task:
         if inspect.isclass(fn):
             return cls
 
-        # if the object being decorated is *not* a class (it's a Python
-        # function), make fn.apply_async and fn.delay proxy through to the
-        # PublisherMixin we dynamically created above
         setattr(fn, 'name', cls.name)
         setattr(fn, 'apply_async', cls.apply_async)
         setattr(fn, 'delay', cls.delay)

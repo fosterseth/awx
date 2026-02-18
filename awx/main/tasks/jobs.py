@@ -17,18 +17,22 @@ import urllib.parse as urlparse
 
 # Django
 from django.conf import settings
+from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import PermissionDenied
 
 # Runner
 import ansible_runner
 
+# Dispatcherd
+from dispatcherd.publish import task as dispatcherd_task
+
 # GitPython
 import git
 from gitdb.exc import BadName as BadGitName
 
 # AWX
-from awx.main.dispatch.publish import task
+from awx.main.dispatch.publish import task, serialize_task
 from awx.main.dispatch import get_task_queuename
 from awx.main.constants import (
     PRIVILEGE_ESCALATION_METHODS,
@@ -36,13 +40,13 @@ from awx.main.constants import (
     JOB_FOLDER_PREFIX,
     MAX_ISOLATED_PATH_COLON_DELIMITER,
     CONTAINER_VOLUMES_MOUNT_TYPES,
-    ACTIVE_STATES,
     HOST_FACTS_FIELDS,
 )
 from awx.main.models import (
     Instance,
     Inventory,
     InventorySource,
+    UnifiedJob,
     Job,
     AdHocCommand,
     ProjectUpdate,
@@ -108,6 +112,27 @@ def with_path_cleanup(f):
     return _wrapped
 
 
+@dispatcherd_task(on_duplicate='queue_one', bind=True, queue=get_task_queuename)
+def dispatch_waiting_jobs(binder):
+    start_time = time.monotonic()
+    job_id_list = []
+    for uj in UnifiedJob.objects.filter(status='waiting', controller_node=settings.CLUSTER_HOST_ID).only('id', 'status', 'polymorphic_ctype', 'celery_task_id')[
+        :25
+    ]:
+        kwargs = uj.get_start_kwargs()
+        if not kwargs:
+            kwargs = {}
+        job_id_list.append(uj.pk)
+        binder.control('run', data={'task': serialize_task(uj._get_task_class()), 'args': [uj.id], 'kwargs': kwargs, 'uuid': uj.celery_task_id})
+    if job_id_list:
+        logger.info(f'Dispatching off waiting jobs {job_id_list}, in time {time.monotonic() - start_time}')
+        # If this is a burst, the task manager may still be producing more jobs so reschedule
+        if len(job_id_list) > 1:
+            binder.control('run', data={'task': serialize_task(dispatch_waiting_jobs), 'args': [], 'kwargs': {}})
+    else:
+        logger.debug('No more waiting jobs to dispatch on this node')
+
+
 class BaseTask(object):
     model = None
     event_model = None
@@ -115,6 +140,7 @@ class BaseTask(object):
     callback_class = RunnerCallback
 
     def __init__(self):
+        self.instance = None
         self.cleanup_paths = []
         self.update_attempts = int(getattr(settings, 'DISPATCHER_DB_DOWNTOWN_TOLLERANCE', settings.DISPATCHER_DB_DOWNTIME_TOLERANCE) / 5)
         self.runner_callback = self.callback_class(model=self.model)
@@ -462,18 +488,46 @@ class BaseTask(object):
     def should_use_fact_cache(self):
         return False
 
+    def transition_status(self, pk: int) -> bool:
+        """Atomically transition status to running, if False returned, another process got it"""
+        with transaction.atomic():
+            # Explanation of parts for the fetch:
+            # .values - avoid loading a full object, this is known to lead to deadlocks due to signals
+            #   the signals load other related rows which another process may be locking, and happens in practice
+            # of=('self',) - keeps FK tables out of the lock list, another way deadlocks can happen
+            # .get - just load the single job
+            instance_data = UnifiedJob.objects.select_for_update(of=('self',)).values('status', 'cancel_flag').get(pk=pk)
+
+            # If status is not waiting (obtained under lock) then this process does not have clearence to run
+            if instance_data['status'] == 'waiting':
+                if instance_data['cancel_flag']:
+                    updated_status = 'canceled'
+                else:
+                    updated_status = 'running'
+                # Explanation of the update:
+                # .filter - again, do not load the full object
+                # .update - a bulk update on just that one row, avoid loading unintended data
+                UnifiedJob.objects.filter(pk=pk).update(status=updated_status, start_args='')
+            elif instance_data['status'] == 'running':
+                return False
+        return True
+
     @with_path_cleanup
     @with_signal_handling
     def run(self, pk, **kwargs):
         """
         Run the job/task and capture its output.
         """
-        self.instance = self.model.objects.get(pk=pk)
-        if self.instance.status != 'canceled' and self.instance.cancel_flag:
-            self.instance = self.update_model(self.instance.pk, start_args='', status='canceled')
-        if self.instance.status not in ACTIVE_STATES:
-            # Prevent starting the job if it has been reaped or handled by another process.
-            raise RuntimeError(f'Not starting {self.instance.status} task pk={pk} because {self.instance.status} is not a valid active state')
+        if not self.instance:  # Used to skip fetch for local runs
+            if not self.transition_status(pk):
+                logger.info(f'Job {pk} is being ran by another process, exiting')
+                return
+
+        # Load the instance
+        self.instance = self.update_model(pk)
+        if self.instance.status != 'running':
+            logger.error(f'Not starting {self.instance.status} task pk={pk} because its status "{self.instance.status}" is not expected')
+            return
 
         if self.instance.execution_environment_id is None:
             from awx.main.signals import disable_activity_stream
@@ -753,6 +807,7 @@ class SourceControlMixin(BaseTask):
             try:
                 # the job private_data_dir is passed so sync can download roles and collections there
                 sync_task = RunProjectUpdate(job_private_data_dir=private_data_dir)
+                sync_task.instance = local_project_sync  # avoids "waiting" status check, performance
                 sync_task.run(local_project_sync.id)
                 local_project_sync.refresh_from_db()
                 self.instance = self.update_model(self.instance.pk, scm_revision=local_project_sync.scm_revision)

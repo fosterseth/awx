@@ -27,6 +27,9 @@ from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.query import QuerySet
 
+# dispatcherd
+from dispatcherd.factories import get_control_from_settings
+
 # Django-CRUM
 from crum import impersonate
 
@@ -59,6 +62,7 @@ from awx.main.models import (
 )
 from awx.main.constants import ACTIVE_STATES, ERROR_STATES
 from awx.main.dispatch.publish import task
+from dispatcherd.publish import task as dispatcherd_task
 from awx.main.dispatch import get_task_queuename, reaper
 from awx.main.utils.common import ignore_inventory_computed_fields, ignore_inventory_group_removal
 
@@ -83,12 +87,14 @@ Try upgrading OpenSSH or providing your private key in an different format. \
 '''
 
 
-def dispatch_startup():
+def _run_dispatch_startup_common():
     startup_logger = logging.getLogger('awx.main.tasks')
 
-    # TODO: Enable this on VM installs
     if settings.IS_K8S:
-        write_receptor_config()
+        try:
+            write_receptor_config()
+        except Exception:
+            logger.exception("Failed to write receptor config, skipping.")
 
     try:
         convert_jsonfields()
@@ -102,40 +108,47 @@ def dispatch_startup():
         except Exception:
             logger.exception("Failed to rebuild schedule {}.".format(sch))
 
-    #
-    # When the dispatcher starts, if the instance cannot be found in the database,
-    # automatically register it.  This is mostly useful for openshift-based
-    # deployments where:
-    #
-    # 2 Instances come online
-    # Instance B encounters a network blip, Instance A notices, and
-    # deprovisions it
-    # Instance B's connectivity is restored, the dispatcher starts, and it
-    # re-registers itself
-    #
-    # In traditional container-less deployments, instances don't get
-    # deprovisioned when they miss their heartbeat, so this code is mostly a
-    # no-op.
-    #
     apply_cluster_membership_policies()
     cluster_node_heartbeat()
     reaper.startup_reaping()
-    reaper.reap_waiting(grace_period=0)
     m = DispatcherMetrics()
     m.reset_values()
 
 
+def _legacy_dispatch_startup():
+    reaper.reap_waiting(grace_period=0)
+
+
+def _dispatcherd_dispatch_startup():
+    from awx.main.tasks.jobs import dispatch_waiting_jobs
+
+    dispatch_waiting_jobs.apply_async(queue=get_task_queuename())
+
+
+def dispatch_startup():
+    _run_dispatch_startup_common()
+    if flag_enabled('FEATURE_DISPATCHERD_ENABLED'):
+        _dispatcherd_dispatch_startup()
+    else:
+        _legacy_dispatch_startup()
+
+
 def inform_cluster_of_shutdown():
     try:
-        this_inst = Instance.objects.get(hostname=settings.CLUSTER_HOST_ID)
-        this_inst.mark_offline(update_last_seen=True, errors=_('Instance received normal shutdown signal'))
-        try:
-            reaper.reap_waiting(this_inst, grace_period=0)
-        except Exception:
-            logger.exception('failed to reap waiting jobs for {}'.format(this_inst.hostname))
-        logger.warning('Normal shutdown signal for instance {}, removed self from capacity pool.'.format(this_inst.hostname))
+        inst = Instance.objects.get(hostname=settings.CLUSTER_HOST_ID)
+        inst.mark_offline(update_last_seen=True, errors=_('Instance received normal shutdown signal'))
     except Exception:
         logger.exception('Encountered problem with normal shutdown signal.')
+        return
+
+    if flag_enabled('FEATURE_DISPATCHERD_ENABLED'):
+        logger.debug("Dispatcherd mode: no extra reaping required for instance %s", inst.hostname)
+    else:
+        try:
+            reaper.reap_waiting(inst, grace_period=0)
+        except Exception:
+            logger.exception('failed to reap waiting jobs for {}'.format(inst.hostname))
+    logger.warning('Normal shutdown signal for instance {}, removed self from capacity pool.'.format(inst.hostname))
 
 
 @task(queue=get_task_queuename)
@@ -307,6 +320,11 @@ def clear_setting_cache(setting_keys):
     cache_keys = set(setting_keys)
     logger.debug('cache delete_many(%r)', cache_keys)
     cache.delete_many(cache_keys)
+
+    if 'LOG_AGGREGATOR_LEVEL' in setting_keys:
+        ctl = get_control_from_settings()
+        ctl.queuename = get_task_queuename()
+        ctl.control('set_log_level', data={'level': settings.LOG_AGGREGATOR_LEVEL})
 
 
 @task(queue='tower_broadcast_all')
@@ -600,6 +618,74 @@ def inspect_execution_and_hop_nodes(instance_list):
 @task(queue=get_task_queuename, bind_kwargs=['dispatch_time', 'worker_tasks'])
 def cluster_node_heartbeat(dispatch_time=None, worker_tasks=None):
     logger.debug("Cluster node heartbeat task.")
+    this_inst, instance_list, lost_instances = _heartbeat_instance_management()
+    if this_inst is None:
+        return
+
+    _heartbeat_check_versions(this_inst, instance_list)
+    _heartbeat_handle_lost_instances(lost_instances, this_inst)
+
+    if worker_tasks is not None:
+        active_task_ids = []
+        for task_list in worker_tasks.values():
+            active_task_ids.extend(task_list)
+
+        ref_time = datetime.fromisoformat(dispatch_time) if dispatch_time else now()
+        reaper.reap(instance=this_inst, excluded_uuids=active_task_ids, ref_time=ref_time)
+
+        if max(len(task_list) for task_list in worker_tasks.values()) <= 1:
+            reaper.reap_waiting(instance=this_inst, excluded_uuids=active_task_ids, ref_time=ref_time)
+
+
+@dispatcherd_task(queue=get_task_queuename, bind=True)
+def adispatch_cluster_node_heartbeat(binder):
+    logger.debug("Dispatcherd cluster heartbeat task.")
+    this_inst, instance_list, lost_instances = _heartbeat_instance_management()
+    if this_inst is None:
+        return
+
+    _heartbeat_check_versions(this_inst, instance_list)
+    _heartbeat_handle_lost_instances(lost_instances, this_inst)
+
+    active_task_ids = _get_active_task_ids_from_dispatcherd(binder)
+    if active_task_ids is None:
+        logger.warning("No active task IDs retrieved from dispatcherd, skipping reaper")
+        return
+
+    ref_time = now()
+    logger.debug(f"Running reaper with {len(active_task_ids)} excluded UUIDs")
+    reaper.reap(instance=this_inst, excluded_uuids=active_task_ids, ref_time=ref_time)
+
+    if UnifiedJob.objects.filter(controller_node=settings.CLUSTER_HOST_ID, status='waiting').exists():
+        from awx.main.tasks.jobs import dispatch_waiting_jobs
+
+        dispatch_waiting_jobs.apply_async(queue=get_task_queuename())
+
+
+def _get_active_task_ids_from_dispatcherd(binder):
+    active_task_ids = []
+    try:
+        logger.debug("Querying dispatcherd API for running tasks")
+        data = binder.control('running')
+
+        data.pop('node_id', None)
+        for task_key, task_value in data.items():
+            if isinstance(task_value, dict) and 'uuid' in task_value:
+                active_task_ids.append(task_value['uuid'])
+                logger.debug(f"Found active task with UUID: {task_value['uuid']}")
+            elif isinstance(task_key, str):
+                active_task_ids.append(task_key)
+                logger.debug(f"Found active task with key: {task_key}")
+
+        logger.debug(f"Retrieved {len(active_task_ids)} active task IDs from dispatcherd")
+        return active_task_ids
+    except Exception:
+        logger.exception("Failed to get running tasks from dispatcherd")
+        return None
+
+
+def _heartbeat_instance_management():
+    logger.debug("Cluster node heartbeat task.")
     nowtime = now()
     instance_list = list(Instance.objects.filter(node_state__in=(Instance.States.READY, Instance.States.UNAVAILABLE, Instance.States.INSTALLED)))
     this_inst = None
@@ -625,7 +711,7 @@ def cluster_node_heartbeat(dispatch_time=None, worker_tasks=None):
         this_inst.local_health_check()
         if startup_event and this_inst.capacity != 0:
             logger.warning(f'Rejoining the cluster as instance {this_inst.hostname}. Prior last_seen {last_last_seen}')
-            return
+            return None, None, None
         elif not last_last_seen:
             logger.warning(f'Instance does not have recorded last_seen, updating to {nowtime}')
         elif (nowtime - last_last_seen) > timedelta(seconds=settings.CLUSTER_NODE_HEARTBEAT_PERIOD + 2):
@@ -637,8 +723,13 @@ def cluster_node_heartbeat(dispatch_time=None, worker_tasks=None):
                 logger.warning(f'Recreated instance record {this_inst.hostname} after unexpected removal')
             this_inst.local_health_check()
         else:
-            raise RuntimeError("Cluster Host Not Found: {}".format(settings.CLUSTER_HOST_ID))
-    # IFF any node has a greater version than we do, then we'll shutdown services
+            logger.error("Cluster Host Not Found: {}".format(settings.CLUSTER_HOST_ID))
+            return None, None, None
+
+    return this_inst, instance_list, lost_instances
+
+
+def _heartbeat_check_versions(this_inst, instance_list):
     for other_inst in instance_list:
         if other_inst.node_type in ('execution', 'hop'):
             continue
@@ -650,11 +741,11 @@ def cluster_node_heartbeat(dispatch_time=None, worker_tasks=None):
                     other_inst.hostname, other_inst.version, this_inst.hostname, this_inst.version
                 )
             )
-            # Shutdown signal will set the capacity to zero to ensure no Jobs get added to this instance.
-            # The heartbeat task will reset the capacity to the system capacity after upgrade.
             stop_local_services(communicate=False)
             raise RuntimeError("Shutting down.")
 
+
+def _heartbeat_handle_lost_instances(lost_instances, this_inst):
     for other_inst in lost_instances:
         try:
             explanation = "Job reaped due to instance shutdown"
@@ -665,7 +756,7 @@ def cluster_node_heartbeat(dispatch_time=None, worker_tasks=None):
         try:
             if settings.AWX_AUTO_DEPROVISION_INSTANCES and other_inst.node_type == "control":
                 deprovision_hostname = other_inst.hostname
-                other_inst.delete()  # FIXME: what about associated inbound links?
+                other_inst.delete()
                 logger.info("Host {} Automatically Deprovisioned.".format(deprovision_hostname))
             elif other_inst.node_state == Instance.States.READY:
                 other_inst.mark_offline(errors=_('Another cluster node has determined this instance to be unresponsive'))
@@ -684,15 +775,6 @@ def cluster_node_heartbeat(dispatch_time=None, worker_tasks=None):
                     logger.exception("Error marking {} as lost.".format(other_inst.hostname))
             else:
                 logger.exception('No SQL state available.  Error marking {} as lost'.format(other_inst.hostname))
-
-    # Run local reaper
-    if worker_tasks is not None:
-        active_task_ids = []
-        for task_list in worker_tasks.values():
-            active_task_ids.extend(task_list)
-        reaper.reap(instance=this_inst, excluded_uuids=active_task_ids, ref_time=datetime.fromisoformat(dispatch_time))
-        if max(len(task_list) for task_list in worker_tasks.values()) <= 1:
-            reaper.reap_waiting(instance=this_inst, excluded_uuids=active_task_ids, ref_time=datetime.fromisoformat(dispatch_time))
 
 
 @task(queue=get_task_queuename)

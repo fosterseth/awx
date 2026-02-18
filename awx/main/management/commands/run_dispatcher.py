@@ -1,16 +1,27 @@
-# Copyright (c) 2015 Ansible, Inc.
-# All Rights Reserved.
 import logging
+import logging.config
 import yaml
+import copy
+
+import redis
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.db import connection
+from django.core.management.base import BaseCommand, CommandError
+from django.core.cache import cache as django_cache
 
+from flags.state import flag_enabled
+
+from dispatcherd import run_service
+from dispatcherd.config import setup as dispatcher_setup
+from dispatcherd.factories import get_control_from_settings
+
+from awx.main.analytics.subsystem_metrics import DispatcherMetricsServer
 from awx.main.dispatch import get_task_queuename
+from awx.main.dispatch.config import get_dispatcherd_config
 from awx.main.dispatch.control import Control
 from awx.main.dispatch.pool import AutoscalePool
 from awx.main.dispatch.worker import AWXConsumerPG, TaskWorker
-from awx.main.analytics.subsystem_metrics import DispatcherMetricsServer
 
 logger = logging.getLogger('awx.main.dispatch')
 
@@ -40,16 +51,39 @@ class Command(BaseCommand):
 
     def handle(self, *arg, **options):
         if options.get('status'):
-            print(Control('dispatcher').status())
+            if flag_enabled('FEATURE_DISPATCHERD_ENABLED'):
+                ctl = get_control_from_settings()
+                results = ctl.control_with_reply('status')
+                if len(results) != 1:
+                    raise CommandError('Did not receive expected number of replies')
+                print(yaml.dump(results[0], default_flow_style=False))
+            else:
+                print(Control('dispatcher').status())
             return
+
         if options.get('schedule'):
-            print(Control('dispatcher').schedule())
+            if flag_enabled('FEATURE_DISPATCHERD_ENABLED'):
+                print('NOT YET IMPLEMENTED')
+            else:
+                print(Control('dispatcher').schedule())
             return
+
         if options.get('running'):
-            print(Control('dispatcher').running())
+            if flag_enabled('FEATURE_DISPATCHERD_ENABLED'):
+                ctl = get_control_from_settings()
+                running_data = ctl.control_with_reply('running')
+                print(yaml.dump(running_data, default_flow_style=False))
+            else:
+                print(Control('dispatcher').running())
             return
+
         if options.get('reload'):
-            return Control('dispatcher').control({'control': 'reload'})
+            if flag_enabled('FEATURE_DISPATCHERD_ENABLED'):
+                print('NOT YET IMPLEMENTED')
+            else:
+                return Control('dispatcher').control({'control': 'reload'})
+            return
+
         if options.get('cancel'):
             cancel_str = options.get('cancel')
             try:
@@ -58,12 +92,34 @@ class Command(BaseCommand):
                 cancel_data = [cancel_str]
             if not isinstance(cancel_data, list):
                 cancel_data = [cancel_str]
-            print(Control('dispatcher').cancel(cancel_data))
+
+            if flag_enabled('FEATURE_DISPATCHERD_ENABLED'):
+                ctl = get_control_from_settings()
+                results = []
+                for task_id in cancel_data:
+                    result = ctl.control_with_reply('cancel', data={'uuid': task_id})
+                    results.append(result)
+                print(yaml.dump(results, default_flow_style=False))
+            else:
+                print(Control('dispatcher').cancel(cancel_data))
+            return
+
+        if flag_enabled('FEATURE_DISPATCHERD_ENABLED'):
+            self.configure_dispatcher_logging()
+
+            # Close the connection, because the pg_notify broker will create new async connection
+            connection.close()
+            django_cache.close()
+
+            dispatcher_setup(get_dispatcherd_config(for_service=True))
+            run_service()
             return
 
         consumer = None
-
-        DispatcherMetricsServer().start()
+        try:
+            DispatcherMetricsServer().start()
+        except redis.exceptions.ConnectionError as exc:
+            raise CommandError(f'Dispatcher could not connect to redis, error: {exc}')
 
         try:
             queues = ['tower_broadcast_all', 'tower_settings_change', get_task_queuename()]
@@ -73,3 +129,18 @@ class Command(BaseCommand):
             logger.debug('Terminating Task Dispatcher')
             if consumer:
                 consumer.stop()
+
+    def configure_dispatcher_logging(self):
+        # Apply special log rule for the parent process
+        special_logging = copy.deepcopy(settings.LOGGING)
+        for handler_name, handler_config in special_logging.get('handlers', {}).items():
+            filters = handler_config.get('filters', [])
+            if 'dynamic_level_filter' in filters:
+                handler_config['filters'] = [flt for flt in filters if flt != 'dynamic_level_filter']
+                logger.info(f'Dispatcherd main process replaced log level filter for {handler_name} handler')
+
+        # Apply the custom logging level here, before the asyncio code starts
+        special_logging.setdefault('loggers', {}).setdefault('dispatcherd', {})
+        special_logging['loggers']['dispatcherd']['level'] = settings.LOG_AGGREGATOR_LEVEL
+
+        logging.config.dictConfig(special_logging)
