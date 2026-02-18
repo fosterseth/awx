@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 PROJ_DATA = os.path.join(os.path.dirname(data.__file__), 'projects')
+COLL_DATA = os.path.join(os.path.dirname(data.__file__), 'collections')
 
 
 def _copy_folders(source_path, dest_path, clear=False):
@@ -53,6 +54,7 @@ def live_tmp_folder():
         shutil.rmtree(path)
     os.mkdir(path)
     _copy_folders(PROJ_DATA, path)
+    _copy_folders(COLL_DATA, path)
     for dirname in os.listdir(path):
         source_dir = os.path.join(path, dirname)
         subprocess.run(GIT_COMMANDS, cwd=source_dir, shell=True)
