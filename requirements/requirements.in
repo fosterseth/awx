@@ -40,7 +40,7 @@ jaraco.functools>=3.6.0  # setuptools 80.9.0 requires splat function added in 3.
 jinja2>=3.1.6  # CVE-2025-27516
 JSON-log-formatter
 jsonschema
-lxml>=4.9.3  # Python 3.12 requires 4.9.3+, transitive dep from python3-saml/xmlsec
+lxml>=4.9.3  # Python 3.12 requires 4.9.3+, transitive dep from django-ansible-base
 Markdown  # used for formatting API help
 maturin  # pydantic-core build dep
 msgpack
@@ -64,6 +64,8 @@ python-daemon
 python-dsv-sdk>=1.0.4
 python-tss-sdk>=1.2.1
 python-ldap
+python3-saml>=1.16.0  # moved from git pin (archived ansible/python3-saml fork) to upstream PyPI; 1.15.0+ removed lxml version cap
+xmlsec<1.3.14  # 1.3.14+ ships manylinux wheels compiled against a different libxml2 than the system's, causing 'lxml & xmlsec libxml2 library version mismatch' at runtime
 pyyaml>=6.0.2
 pyzstd  # otel collector log file compression library
 receptorctl==1.6.4
@@ -83,9 +85,9 @@ uwsgitop
 wheel>=0.46.2  # CVE-2026-24049
 pip==25.3  # see UPGRADE BLOCKERs
 setuptools==80.9.0  # see UPGRADE BLOCKERs
-setuptools-scm[toml]  # see UPGRADE BLOCKERs, xmlsec build dep
+setuptools-scm[toml]  # see UPGRADE BLOCKERs
 setuptools-rust  # cryptography build dep
-pkgconfig>=1.5.1  # xmlsec build dep - needed for offline build
+pkgconfig>=1.5.1  # build dep for native extensions - needed for offline build
 django-flags>=5.0.13
 protobuf>=4.25.8 # CVE-2025-4565
 idna>=3.10 # CVE-2024-3651
