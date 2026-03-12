@@ -18,6 +18,7 @@ from awx.main.tests.functional.conftest import *  # noqa
 from awx.main.tests import data
 
 from awx.main.models import Project, JobTemplate, Organization, Inventory, WorkflowJob, UnifiedJob
+from awx.main.tasks.system import clear_setting_cache
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +60,19 @@ def live_tmp_folder():
     for dirname in os.listdir(path):
         source_dir = os.path.join(path, dirname)
         subprocess.run(GIT_COMMANDS, cwd=source_dir, shell=True)
+    # force invalidation of key before checking it in case it is stale
+    cache.delete_many(['AWX_ISOLATION_SHOW_PATHS'])
+    settings._awx_conf_memoizedcache.clear()
     if path not in settings.AWX_ISOLATION_SHOW_PATHS:
+        logger.info(f'Modifying settings.AWX_ISOLATION_SHOW_PATHS for live test: {settings.AWX_ISOLATION_SHOW_PATHS + [path]}')
         settings.AWX_ISOLATION_SHOW_PATHS = settings.AWX_ISOLATION_SHOW_PATHS + [path]
         cache.delete_many(['AWX_ISOLATION_SHOW_PATHS'])
+        settings._awx_conf_memoizedcache.clear()
+        # cache is cleared in test environment, but need to clear in test environment
+        clear_setting_cache.delay(['AWX_ISOLATION_SHOW_PATHS'])
+        time.sleep(5.0)  # for _awx_conf_memoizedcache to expire on all workers
+    else:
+        logger.info(f'Believed that {path} is already in settings.AWX_ISOLATION_SHOW_PATHS: {settings.AWX_ISOLATION_SHOW_PATHS}')
     return path
 
 
@@ -194,37 +205,17 @@ def project_factory(post, default_org, admin):
 
 
 @pytest.fixture
-def run_job_from_playbook(default_org, demo_inv, post, admin):
-    def _rf(test_name, playbook, local_path=None, scm_url=None, jt_params=None):
-        project_name = f'{test_name} project'
+def run_job_from_playbook(demo_inv, post, admin, project_factory):
+    def _rf(test_name, playbook, local_path=None, scm_url=None, jt_params=None, proj=None, wait=True):
         jt_name = f'{test_name} JT: {playbook}'
 
-        old_proj = Project.objects.filter(name=project_name).first()
-        if old_proj:
-            old_proj.delete()
+        if not proj:
+            proj = project_factory(scm_url=scm_url, local_path=local_path)
 
         old_jt = JobTemplate.objects.filter(name=jt_name).first()
         if old_jt:
+            logger.info(f'Deleting existing JT {jt_name}')
             old_jt.delete()
-
-        proj_kwargs = {'name': project_name, 'organization': default_org.id}
-        if local_path:
-            # manual path
-            proj_kwargs['scm_type'] = ''
-            proj_kwargs['local_path'] = local_path
-        elif scm_url:
-            proj_kwargs['scm_type'] = 'git'
-            proj_kwargs['scm_url'] = scm_url
-        else:
-            raise RuntimeError('Need to provide scm_url or local_path')
-
-        result = post(
-            reverse('api:project_list'),
-            proj_kwargs,
-            admin,
-            expect=201,
-        )
-        proj = Project.objects.get(id=result.data['id'])
 
         if proj.current_job:
             wait_for_job(proj.current_job)
@@ -246,7 +237,9 @@ def run_job_from_playbook(default_org, demo_inv, post, admin):
         job = jt.create_unified_job()
         job.signal_start()
 
-        wait_for_job(job)
-        assert job.status == 'successful'
+        if wait:
+            wait_for_job(job)
+            assert job.status == 'successful'
+        return {'job': job, 'job_template': jt, 'project': proj}
 
     return _rf
