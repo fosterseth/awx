@@ -2,6 +2,7 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
+from ._sqlite_helper import dbawaremigrations
 import awx.main.models.notifications
 import django.db.models.deletion
 import awx.main.models.workflow
@@ -508,11 +509,11 @@ class Migration(migrations.Migration):
             name='adhoccommandevent',
             unique_together=set([]),
         ),
-        migrations.AlterIndexTogether(
+        dbawaremigrations.AlterIndexTogether(
             name='adhoccommandevent',
             index_together=set([('ad_hoc_command', 'event'), ('ad_hoc_command', 'uuid'), ('ad_hoc_command', 'end_line'), ('ad_hoc_command', 'start_line')]),
         ),
-        migrations.AlterIndexTogether(
+        dbawaremigrations.AlterIndexTogether(
             name='jobevent',
             index_together=set([('job', 'event'), ('job', 'parent_uuid'), ('job', 'start_line'), ('job', 'uuid'), ('job', 'end_line')]),
         ),

@@ -8,6 +8,7 @@ from __future__ import unicode_literals
 import awx.main.fields
 
 from django.db import migrations, models
+from ._sqlite_helper import dbawaremigrations
 import django.db.models.deletion
 from django.conf import settings
 from django.utils.timezone import now
@@ -324,7 +325,7 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AlterIndexTogether(
+        dbawaremigrations.AlterIndexTogether(
             name='fact',
             index_together=set([('timestamp', 'module', 'host')]),
         ),
@@ -487,13 +488,15 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='role',
             name='ancestors',
-            field=models.ManyToManyField(related_name='descendents', through='main.RoleAncestorEntry', to='main.Role'),
+            field=models.ManyToManyField(
+                related_name='descendents', through='main.RoleAncestorEntry', through_fields=('descendent', 'ancestor'), to='main.Role'
+            ),
         ),
-        migrations.AlterIndexTogether(
+        dbawaremigrations.AlterIndexTogether(
             name='role',
             index_together=set([('content_type', 'object_id')]),
         ),
-        migrations.AlterIndexTogether(
+        dbawaremigrations.AlterIndexTogether(
             name='roleancestorentry',
             index_together=set([('ancestor', 'content_type_id', 'object_id'), ('ancestor', 'content_type_id', 'role_field'), ('ancestor', 'descendent')]),
         ),

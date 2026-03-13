@@ -1,3 +1,5 @@
+import logging
+
 from django.db import migrations
 
 
@@ -53,9 +55,59 @@ class RunPython(migrations.operations.special.RunPython):
         super().database_backwards(app_label, schema_editor, from_state, to_state)
 
 
+class AlterIndexTogether(migrations.operations.models.AlterIndexTogether):
+    """
+    SQLite-aware AlterIndexTogether that handles missing indexes gracefully.
+    SQLite can drop indexes during table rewrites, causing Django to fail
+    when trying to alter non-existent indexes.
+    """
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        if schema_editor.connection.vendor.startswith('sqlite'):
+            # On SQLite, gracefully handle missing indexes
+            try:
+                super().database_forwards(app_label, schema_editor, from_state, to_state)
+            except ValueError as e:
+                error_msg = str(e)
+                if "Found wrong number" in error_msg and ("constraints" in error_msg or "indexes" in error_msg):
+                    # Index doesn't exist (was dropped during table rewrite), skip
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Skipping AlterIndexTogether due to missing index on SQLite: {error_msg}")
+                else:
+                    raise
+        else:
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
+
+
+class RenameIndex(migrations.operations.models.RenameIndex):
+    """
+    SQLite-aware RenameIndex that handles missing indexes gracefully.
+    SQLite can drop indexes during table rewrites, causing Django to fail
+    when trying to rename non-existent indexes.
+    """
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        if schema_editor.connection.vendor.startswith('sqlite'):
+            # On SQLite, gracefully handle missing indexes
+            try:
+                super().database_forwards(app_label, schema_editor, from_state, to_state)
+            except ValueError as e:
+                error_msg = str(e)
+                if "Found wrong number" in error_msg and ("constraints" in error_msg or "indexes" in error_msg):
+                    # Index doesn't exist (was dropped during table rewrite), skip
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Skipping RenameIndex due to missing index on SQLite: {error_msg}")
+                else:
+                    raise
+        else:
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
+
+
 class _sqlitemigrations:
     RunPython = RunPython
     RunSQL = RunSQL
+    AlterIndexTogether = AlterIndexTogether
+    RenameIndex = RenameIndex
 
 
 dbawaremigrations = _sqlitemigrations()

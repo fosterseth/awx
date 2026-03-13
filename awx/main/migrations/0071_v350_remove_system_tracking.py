@@ -3,6 +3,7 @@
 from __future__ import unicode_literals
 
 from django.db import migrations
+from ._sqlite_helper import dbawaremigrations
 
 
 class Migration(migrations.Migration):
@@ -11,7 +12,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AlterIndexTogether(
+        dbawaremigrations.AlterIndexTogether(
             name='fact',
             index_together=set([]),
         ),

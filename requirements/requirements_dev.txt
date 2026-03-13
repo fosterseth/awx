@@ -1,5 +1,5 @@
 build
-django-debug-toolbar==3.2.4
+django-debug-toolbar>=4.4  # 4.4+ supports Django 5.x
 django-test-migrations
 # pprofile - re-add once https://github.com/vpelletier/pprofile/issues/41 is addressed
 ipython>=7.31.1 # https://github.com/ansible/awx/security/dependabot/30

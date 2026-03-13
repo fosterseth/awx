@@ -3,6 +3,7 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
+from ._sqlite_helper import dbawaremigrations
 import django.db.models.deletion
 
 import awx.main.fields
@@ -130,15 +131,15 @@ class Migration(migrations.Migration):
                 'ordering': ('-pk',),
             },
         ),
-        migrations.AlterIndexTogether(
+        dbawaremigrations.AlterIndexTogether(
             name='inventoryupdateevent',
             index_together=set([('inventory_update', 'start_line'), ('inventory_update', 'uuid'), ('inventory_update', 'end_line')]),
         ),
-        migrations.AlterIndexTogether(
+        dbawaremigrations.AlterIndexTogether(
             name='projectupdateevent',
             index_together=set([('project_update', 'event'), ('project_update', 'end_line'), ('project_update', 'start_line'), ('project_update', 'uuid')]),
         ),
-        migrations.AlterIndexTogether(
+        dbawaremigrations.AlterIndexTogether(
             name='systemjobevent',
             index_together=set([('system_job', 'end_line'), ('system_job', 'uuid'), ('system_job', 'start_line')]),
         ),
