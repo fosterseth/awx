@@ -4201,6 +4201,10 @@ class JobJobEventsChildrenSummary(APIView):
 
         prev_non_meta_event = events[0]
         for i, e in enumerate(events):
+            if not e['event']:
+                logging.warning(f'event type missing for event {e}')
+                continue
+
             if not e['event'] in JobJobEventsChildrenSummary.meta_events:
                 prev_non_meta_event = e
             if not e['uuid']:
@@ -4238,9 +4242,11 @@ class JobJobEventsChildrenSummary(APIView):
                 z = i
                 next_non_meta_event = events[-1]
                 while z < len(events):
-                    if events[z]['event'] not in JobJobEventsChildrenSummary.meta_events:
+                    if events[z]['event'] not in JobJobEventsChildrenSummary.meta_events + ('',):
                         next_non_meta_event = events[z]
                         break
+                    elif not events[z]['event']:
+                        logging.warning(f"JobEventChildrenSummary: job event 'event' field is unexpectedly empty for job {job.id}")
                     z += 1
                 event_level_after = models.JobEvent.LEVEL_FOR_EVENT[next_non_meta_event['event']]
                 if event_level_after and event_level_after > event_level_before:
