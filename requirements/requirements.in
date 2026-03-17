@@ -12,7 +12,8 @@ botocore>=1.40.46
 cachetools  # used for TTL caching in awx/conf/settings.py
 channels>=4.0  # 4.0+ supports Django 4.2+, 4.1+ supports Django 5.x
 channels-redis
-cryptography>=42.0.4  # CVE-2024-26130
+cryptography>=46.0.5 # CVE-2026-26007
+msal>=1.32.0  # cryptography>=46 requires msal 1.32+ (transitive dep from azure-identity)
 Cython
 daphne>=4.0  # 4.0+ supports Django 4.2+, 4.1+ supports Django 5.x
 distro
@@ -59,7 +60,7 @@ psutil
 pyasn1>=0.6.2  # CVE-2026-2349
 pygerduty
 PyGithub <= 2.6.0
-pyopenssl>=23.2.0  # resolve dep conflict from cryptography pin above
+pyopenssl>=25.3.0  # cryptography>=46 requires pyopenssl 25.3+ (cryptography<47 cap)
 pyparsing==2.4.6  # Upgrading to v3 of pyparsing introduce errors on smart host filtering: Expected 'or' term, found 'or'  (at char 15), (line:1, col:16)
 python-daemon
 python-dsv-sdk>=1.0.4
