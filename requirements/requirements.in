@@ -16,7 +16,7 @@ cryptography>=42.0.4  # CVE-2024-26130
 Cython
 daphne>=4.0  # 4.0+ supports Django 4.2+, 4.1+ supports Django 5.x
 distro
-django>=5.2,<5.3  # Upgraded to Django 5.2 LTS (4.2 security support ends April 2026)
+django>=5.2.11,<5.3  # CVE-2025-14550
 django-auth-ldap
 django-cors-headers
 django-crum
