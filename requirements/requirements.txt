@@ -314,7 +314,6 @@ more-itertools==10.2.0
     #   jaraco-text
 msal==1.35.1
     # via
-    #   -r /awx_devel/requirements/requirements.in
     #   azure-identity
     #   msal-extensions
 msal-extensions==1.1.0
