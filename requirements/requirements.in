@@ -12,8 +12,8 @@ botocore>=1.40.46
 cachetools  # used for TTL caching in awx/conf/settings.py
 channels>=4.0  # 4.0+ supports Django 4.2+, 4.1+ supports Django 5.x
 channels-redis
-cffi==1.16.0  # pinned to match tag 4.7.10; unpin when bumping cryptography
-cryptography==42.0.8  # CVE-2024-26130
+cryptography>=46.0.5 # CVE-2026-26007
+msal>=1.32.0  # cryptography>=46 requires msal 1.32+ (transitive dep from azure-identity)
 Cython
 daphne>=4.0  # 4.0+ supports Django 4.2+, 4.1+ supports Django 5.x
 distro
@@ -45,7 +45,6 @@ kubernetes>=35.0.0  # 35.0.0 removes urllib3<2.4.0 upper bound, no longer needs 
 lxml>=4.9.3  # Python 3.12 requires 4.9.3+, transitive dep from django-ansible-base
 Markdown >= 3.8.1 # CVE-2025-69534
 maturin  # pydantic-core build dep
-msal==1.26.0  # pinned to match tag 4.7.10; unpin when bumping cryptography
 msgpack
 msrestazure
 OPA-python-client==2.0.2 # Code contain monkey patch targeted to 2.0.2 to fix https://github.com/Turall/OPA-python-client/issues/29
@@ -61,7 +60,7 @@ psutil
 pyasn1>=0.6.2  # CVE-2026-2349
 pygerduty
 PyGithub <= 2.6.0
-pyopenssl==24.0.0  # pinned to match pre-CVE-2026-26007 version; 26+ requires cryptography>=46
+pyopenssl>=25.3.0  # cryptography>=46 requires pyopenssl 25.3+ (cryptography<47 cap)
 pyparsing==2.4.6  # Upgrading to v3 of pyparsing introduce errors on smart host filtering: Expected 'or' term, found 'or'  (at char 15), (line:1, col:16)
 python-daemon
 python-dsv-sdk>=1.0.4
