@@ -378,13 +378,22 @@ class ApiV2ConfigView(APIView):
             user_ldap_fields.extend(getattr(settings, 'AUTH_LDAP_USER_FLAGS_BY_GROUP', {}).keys())
             data['user_ldap_fields'] = user_ldap_fields
 
-        if (
-            request.user.is_superuser
-            or request.user.is_system_auditor
-            or Organization.accessible_objects(request.user, 'admin_role').exists()
-            or Organization.accessible_objects(request.user, 'auditor_role').exists()
-            or Organization.accessible_objects(request.user, 'project_admin_role').exists()
-        ):
+        # Check superuser/auditor first
+        if request.user.is_superuser or request.user.is_system_auditor:
+            has_org_access = True
+        else:
+            # Single query checking all three organization role types at once
+            has_org_access = (
+                (
+                    Organization.access_qs(request.user, 'change')
+                    | Organization.access_qs(request.user, 'audit')
+                    | Organization.access_qs(request.user, 'add_project')
+                )
+                .distinct()
+                .exists()
+            )
+
+        if has_org_access:
             data.update(
                 dict(
                     project_base_dir=settings.PROJECTS_ROOT,
@@ -392,8 +401,10 @@ class ApiV2ConfigView(APIView):
                     custom_virtualenvs=get_custom_venv_choices(),
                 )
             )
-        elif JobTemplate.accessible_objects(request.user, 'admin_role').exists():
-            data['custom_virtualenvs'] = get_custom_venv_choices()
+        else:
+            # Only check JobTemplate access if org check failed
+            if JobTemplate.accessible_objects(request.user, 'admin_role').exists():
+                data['custom_virtualenvs'] = get_custom_venv_choices()
 
         return Response(data)
 
