@@ -51,15 +51,11 @@ def _fast_forward_rrules(rrules, anchor_dt=None):
 
 def _fast_forward_rrule(rrule, anchor_dt=None):
     '''
-    Utility to fast forward an rrule by replacing its dtstart with a valid
-    occurrence near anchor_dt.
+    Utility to fast forward an rrule by replacing its dtstart with anchor_dt.
 
-    anchor_dt is a reference point (e.g. the schedule's next_run) used to
-    find the nearest prior occurrence of this specific rrule. Using a real
-    occurrence as the new dtstart guarantees alignment with all BYxxx
-    constraints and avoids DST-related issues.
-
-    If anchor_dt is None the rrule is returned unchanged.
+    anchor_dt is a reference point (e.g. the schedule's next_run) that
+    becomes the new dtstart. If anchor_dt is None the rrule is returned
+    unchanged.
 
     Returns a new rrule with a new dtstart
     '''
