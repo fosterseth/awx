@@ -41,27 +41,31 @@ def _assert_timezone_id_is_valid(rrules) -> None:
     ) from None
 
 
-def _fast_forward_rrules(rrules, ref_dt=None):
+def _fast_forward_rrules(rrules, anchor_dt=None):
+    if len(rrules) > 1:
+        return rrules
     for i, rule in enumerate(rrules):
-        rrules[i] = _fast_forward_rrule(rule, ref_dt=ref_dt)
+        rrules[i] = _fast_forward_rrule(rule, anchor_dt=anchor_dt)
     return rrules
 
 
-def _fast_forward_rrule(rrule, ref_dt=None):
+def _fast_forward_rrule(rrule, anchor_dt=None):
     '''
-    Utility to fast forward an rrule, maintaining consistency in the resulting
-    occurrences.
+    Utility to fast forward an rrule by replacing its dtstart with a valid
+    occurrence near anchor_dt.
 
-    Uses the .replace() method to update the rrule with a newer dtstart
-    The operation ensures that the original occurrences (based on the original dtstart)
-    will match the occurrences after changing the dtstart.
+    anchor_dt is a reference point (e.g. the schedule's next_run) used to
+    find the nearest prior occurrence of this specific rrule. Using a real
+    occurrence as the new dtstart guarantees alignment with all BYxxx
+    constraints and avoids DST-related issues.
 
-    All datetime operations (subtracting dates and adding timedeltas) should be
-    in UTC to avoid DST issues. As such, the rrule dtstart is converted to UTC
-    then back to the original timezone at the end.
+    If anchor_dt is None the rrule is returned unchanged.
 
     Returns a new rrule with a new dtstart
     '''
+
+    if anchor_dt is None:
+        return rrule
 
     if rrule._freq not in {dateutil.rrule.HOURLY, dateutil.rrule.MINUTELY}:
         return rrule
@@ -69,35 +73,8 @@ def _fast_forward_rrule(rrule, ref_dt=None):
     if rrule._count:
         return rrule
 
-    if ref_dt is None:
-        ref_dt = now()
-
-    ref_dt = ref_dt.astimezone(datetime.timezone.utc)
-
-    rrule_dtstart_utc = rrule._dtstart.astimezone(datetime.timezone.utc)
-    if rrule_dtstart_utc > ref_dt:
-        return rrule
-
-    interval = rrule._interval if rrule._interval else 1
-    if rrule._freq == dateutil.rrule.HOURLY:
-        interval *= 60 * 60
-    elif rrule._freq == dateutil.rrule.MINUTELY:
-        interval *= 60
-
-    # if after converting to seconds the interval is still a fraction,
-    # just return original rrule
-    if isinstance(interval, float) and not interval.is_integer():
-        return rrule
-
-    seconds_since_dtstart = (ref_dt - rrule_dtstart_utc).total_seconds()
-
-    # it is important to fast forward by a number that is divisible by
-    # interval. For example, if interval is 7 hours, we fast forward by 7, 14, 21, etc. hours.
-    # Otherwise, the occurrences after the fast forward might not match the ones before.
-    # x // y is integer division, lopping off any remainder, so that we get the outcome we want.
-    interval_aligned_offset = datetime.timedelta(seconds=(seconds_since_dtstart // interval) * interval)
-    new_start = rrule_dtstart_utc + interval_aligned_offset
-    new_rrule = rrule.replace(dtstart=new_start.astimezone(rrule._dtstart.tzinfo))
+    new_dtstart = anchor_dt.astimezone(rrule._dtstart.tzinfo)
+    new_rrule = rrule.replace(dtstart=new_dtstart)
     return new_rrule
 
 
@@ -260,7 +237,7 @@ class Schedule(PrimordialModel, LaunchTimeConfig):
         return " ".join(rules)
 
     @classmethod
-    def rrulestr(cls, rrule, ref_dt=None, **kwargs):
+    def rrulestr(cls, rrule, anchor_dt=None, **kwargs):
         """
         Apply our own custom rrule parsing requirements
         """
@@ -271,13 +248,11 @@ class Schedule(PrimordialModel, LaunchTimeConfig):
         _assert_timezone_id_is_valid(rruleset._rrule)
         _assert_timezone_id_is_valid(rruleset._exrule)
 
-        # Fast forward is a way for us to limit the number of events in the rruleset
-        # If we are fast forwarding and we don't have a count limited rule that is minutely or hourly
-        # We will modify the start date of the rule to bring as close to the current date as possible
-        # Even though the API restricts each rrule to have the same dtstart, each rrule in the rruleset
-        # can fast forward to a difference dtstart. This is required in order to get stable occurrences.
-        rruleset._rrule = _fast_forward_rrules(rruleset._rrule, ref_dt=ref_dt)
-        rruleset._exrule = _fast_forward_rrules(rruleset._exrule, ref_dt=ref_dt)
+        # Fast forward the dtstart to anchor_dt (a known valid occurrence,
+        # typically next_run) so dateutil doesn't iterate from the original
+        # dtstart which may be years in the past.
+        rruleset._rrule = _fast_forward_rrules(rruleset._rrule, anchor_dt=anchor_dt)
+        rruleset._exrule = _fast_forward_rrules(rruleset._exrule, anchor_dt=anchor_dt)
 
         return rruleset
 
@@ -317,7 +292,7 @@ class Schedule(PrimordialModel, LaunchTimeConfig):
         for field_name in affects_fields:
             starting_values[field_name] = getattr(self, field_name)
 
-        future_rs = Schedule.rrulestr(self.rrule)
+        future_rs = Schedule.rrulestr(self.rrule, anchor_dt=self.next_run)
 
         if self.enabled:
             next_run_actual = future_rs.after(now())
