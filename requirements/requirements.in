@@ -57,7 +57,7 @@ pexpect==4.7.0  # see library notes
 prometheus-client
 psycopg
 psutil
-pyasn1>=0.6.2  # CVE-2026-2349
+pyasn1>=0.6.3  # CVE-2026-30922
 pygerduty
 PyGithub <= 2.6.0
 pyopenssl>=26.0.0  # CVE-2026-27459
