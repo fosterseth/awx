@@ -1769,6 +1769,8 @@ class CredentialExternalTest(SubDetailAPIView):
     @extend_schema_if_available(extensions={"x-ai-description": "Test update the input values and metadata of an external credential"})
     def post(self, request, *args, **kwargs):
         obj = self.get_object()
+        if obj.credential_type.kind != 'external':
+            raise ParseError(_('Credential is not testable.'))
         backend_kwargs = {}
         for field_name, value in obj.inputs.items():
             backend_kwargs[field_name] = obj.get_input(field_name)
@@ -1834,6 +1836,8 @@ class CredentialTypeExternalTest(SubDetailAPIView):
     @extend_schema_if_available(extensions={"x-ai-description": "Test a complete set of input values for an external credential"})
     def post(self, request, *args, **kwargs):
         obj = self.get_object()
+        if obj.kind != 'external':
+            raise ParseError(_('Credential type is not testable.'))
         backend_kwargs = request.data.get('inputs', {})
         backend_kwargs.update(request.data.get('metadata', {}))
         try:

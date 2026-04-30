@@ -1374,3 +1374,11 @@ def test_external_credential_rbac_test_endpoint(post, alice, external_credential
 
     external_credential.use_role.members.add(alice)
     assert post(url, data, alice).status_code == 202
+
+
+@pytest.mark.django_db
+def test_credential_external_test_returns_400_for_non_external_credential(post, admin, credential):
+    url = reverse('api:credential_external_test', kwargs={'pk': credential.pk})
+    response = post(url, {'metadata': {}}, admin)
+    assert response.status_code == 400
+    assert 'not testable' in response.data.get('detail', '').lower()
