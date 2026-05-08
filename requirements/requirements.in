@@ -70,7 +70,7 @@ python3-saml>=1.16.0  # moved from git pin (archived ansible/python3-saml fork) 
 xmlsec<1.3.14  # 1.3.14+ ships manylinux wheels compiled against a different libxml2 than the system's, causing 'lxml & xmlsec libxml2 library version mismatch' at runtime
 pyyaml>=6.0.2
 pyzstd  # otel collector log file compression library
-receptorctl==1.6.4
+receptorctl==1.6.5
 rsa  # required by google-auth (transitive dep of kubernetes)
 google-auth<2.48.0  # 2.48.0 unconditionally imports rsa package which is in the uninstall list
 sqlparse>=0.4.4   # Required by django https://github.com/ansible/awx/security/dependabot/96
