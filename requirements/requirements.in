@@ -64,7 +64,7 @@ pyopenssl>=26.0.0  # CVE-2026-27459
 pyparsing==2.4.6  # Upgrading to v3 of pyparsing introduce errors on smart host filtering: Expected 'or' term, found 'or'  (at char 15), (line:1, col:16)
 python-daemon
 python-dsv-sdk>=1.0.4
-python-tss-sdk>=1.2.1
+python-tss-sdk>=2.0.0
 python-ldap
 python3-saml>=1.16.0  # moved from git pin (archived ansible/python3-saml fork) to upstream PyPI; 1.15.0+ removed lxml version cap
 xmlsec<1.3.14  # 1.3.14+ ships manylinux wheels compiled against a different libxml2 than the system's, causing 'lxml & xmlsec libxml2 library version mismatch' at runtime
