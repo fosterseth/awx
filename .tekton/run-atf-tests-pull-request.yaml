@@ -27,7 +27,7 @@ spec:
       - name: name
         value: aap-api-tests
       - name: bundle
-        value: quay.io/aap-ci/tekton-catalog/pipeline/test/aap-api-tests:0.1@sha256:54d9e941748bae94b2154b3b253a985e628751dfa4508a138d9b05f74a3c1ddf
+        value: quay.io/aap-ci/tekton-catalog/pipeline/test/aap-api-tests:0.1@sha256:b7732e8da278e83cf91dbf3a11e374240781d740318b8761ee8b3a1bcf3a5d8f
       - name: kind
         value: pipeline
       - name: secret
@@ -52,7 +52,7 @@ spec:
     - name: aap-dev-component-source-name
       value: "controller"
     - name: pytest-number-of-parallel-processes
-      value: "2"
+      value: "6"
 
   workspaces:
     - name: workspace
