@@ -31,7 +31,7 @@ django-solo
 djangorestframework>=3.15.2
 djangorestframework-yaml
 drf-spectacular>=0.27.0
-dynaconf<4
+dynaconf>=3.2.13 	# CVE-2026-33154
 filelock
 frozenlist>=1.4.0  # Python 3.12 requires 1.4.0+, transitive dep from aiohttp
 GitPython>=3.1.37  # CVE-2023-41040
