@@ -182,21 +182,32 @@ class SAMLMigrator(BaseAuthenticatorMigrator):
         revoke = saml_team_attr.get('remove', True)
         self._add_to_extra_data([saml_attr, saml_attr])
 
+        # Group rows by (team, organization). The gateway has a uniqueness
+        # constraint on (name, authenticator), and the mapper name is derived
+        # from (team, organization), so multiple rows with the same pair must
+        # be folded into a single mapper whose trigger lists all matching values.
+        groups = {}
         for item in saml_team_attr["team_org_map"]:
-            team_list = item["team"]
-            if isinstance(team_list, str):
-                team_list = [team_list]
             team = item.get("team_alias") or item["team"]
+            key = (team, item["organization"])
+            values = item["team"] if isinstance(item["team"], list) else [item["team"]]
+            if key not in groups:
+                groups[key] = {"team": team, "organization": item["organization"], "values": []}
+            for v in values:
+                if v not in groups[key]["values"]:
+                    groups[key]["values"].append(v)
+
+        for g in groups.values():
             self.team_mappers.append(
                 {
                     "map_type": "team",
                     "role": "Team Member",
-                    "organization": item["organization"],
-                    "team": team,
-                    "name": "Team" + "-" + team + "-" + item["organization"],
+                    "organization": g["organization"],
+                    "team": g["team"],
+                    "name": "Team" + "-" + g["team"] + "-" + g["organization"],
                     "revoke": revoke,
                     "authenticator": -1,
-                    "triggers": {"attributes": {saml_attr: {"in": team_list}, "join_condition": "or"}},
+                    "triggers": {"attributes": {saml_attr: {"in": g["values"]}, "join_condition": "or"}},
                     "order": self.next_order,
                 }
             )

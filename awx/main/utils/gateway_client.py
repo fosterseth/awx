@@ -352,19 +352,26 @@ class GatewayClient:
             GatewayAPIError: If request fails
         """
         endpoint = f'/api/gateway/v1/authenticators/{authenticator_id}/authenticator_maps/'
+        all_results = []
 
         try:
-            response = self._make_request('GET', endpoint)
+            while endpoint:
+                response = self._make_request('GET', endpoint)
 
-            if response.status_code == 200:
+                if response.status_code != 200:
+                    error_msg = f"Failed to get authenticator maps. Status: {response.status_code}"
+                    raise GatewayAPIError(error_msg, response.status_code)
+
                 result = response.json()
-                # Handle paginated response
+                # Handle paginated response - follow `next` until exhausted
                 if isinstance(result, dict) and 'results' in result:
-                    return result['results']
-                return result
-            else:
-                error_msg = f"Failed to get authenticator maps. Status: {response.status_code}"
-                raise GatewayAPIError(error_msg, response.status_code)
+                    all_results.extend(result['results'])
+                    endpoint = result.get('next')
+                else:
+                    # Non-paginated response, return as-is
+                    return result
+
+            return all_results
 
         except requests.RequestException as e:
             raise GatewayAPIError(f"Failed to get authenticator maps: {str(e)}")
