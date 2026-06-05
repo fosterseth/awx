@@ -83,6 +83,19 @@ Try upgrading OpenSSH or providing your private key in an different format. \
 '''
 
 
+def _sync_credential_types_to_db():
+    """Ensure CredentialType DB rows match the installed plugins.
+
+    This is the only DB-writing step from the old apps.ready() credential
+    loading. The in-memory registry is now populated lazily on first access.
+    """
+    from awx.main.models.credential import CredentialType
+    from awx.main.utils.migration import is_database_synchronized
+
+    if is_database_synchronized():
+        CredentialType.setup_tower_managed_defaults()
+
+
 def _run_dispatch_startup_common():
     """
     Execute the common startup initialization steps.
@@ -97,6 +110,11 @@ def _run_dispatch_startup_common():
             write_receptor_config()
         except Exception:
             logger.exception("Failed to write receptor config, skipping.")
+
+    try:
+        _sync_credential_types_to_db()
+    except Exception:
+        logger.exception("Failed to sync credential types to DB, skipping.")
 
     try:
         convert_jsonfields()

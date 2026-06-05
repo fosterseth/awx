@@ -1,7 +1,5 @@
 import pytest
 
-from django.apps import apps
-
 
 @pytest.fixture
 def mock_setup_tower_managed_defaults(mocker):
@@ -9,18 +7,22 @@ def mock_setup_tower_managed_defaults(mocker):
 
 
 @pytest.mark.django_db
-def test_load_credential_types_feature_migrations_ran(mocker, mock_setup_tower_managed_defaults):
-    mocker.patch('awx.main.apps.is_database_synchronized', return_value=True)
+def test_sync_credential_types_migrations_ran(mocker, mock_setup_tower_managed_defaults):
+    mocker.patch('awx.main.tasks.system.is_database_synchronized', return_value=True)
 
-    apps.get_app_config('main')._load_credential_types_feature()
+    from awx.main.tasks.system import _sync_credential_types_to_db
+
+    _sync_credential_types_to_db()
 
     mock_setup_tower_managed_defaults.assert_called_once()
 
 
 @pytest.mark.django_db
-def test_load_credential_types_feature_migrations_not_ran(mocker, mock_setup_tower_managed_defaults):
-    mocker.patch('awx.main.apps.is_database_synchronized', return_value=False)
+def test_sync_credential_types_migrations_not_ran(mocker, mock_setup_tower_managed_defaults):
+    mocker.patch('awx.main.tasks.system.is_database_synchronized', return_value=False)
 
-    apps.get_app_config('main')._load_credential_types_feature()
+    from awx.main.tasks.system import _sync_credential_types_to_db
+
+    _sync_credential_types_to_db()
 
     mock_setup_tower_managed_defaults.assert_not_called()
