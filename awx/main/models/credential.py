@@ -698,4 +698,6 @@ def load_credentials():
 
 from awx.main.utils.lazy_registry import LazyLoadDict  # noqa: E402
 
+# load_credentials writes directly into this dict via registry[ns] = ...,
+# LazyLoadDict just ensures it runs once before the first read access
 ManagedCredentialType.registry = LazyLoadDict(load_credentials)
