@@ -10,6 +10,7 @@ aiohttp[speedups]==3.13.3
     # via
     #   -r /awx_devel/requirements/requirements.in
     #   aiohttp-retry
+    #   kubernetes
     #   opa-python-client
     #   twilio
 aiohttp-retry==2.8.3
@@ -290,7 +291,7 @@ jsonschema-specifications==2023.12.1
     # via jsonschema
 jwcrypto==1.5.4
     # via django-oauth-toolkit
-kubernetes==35.0.0
+kubernetes==36.0.0
     # via
     #   -r /awx_devel/requirements/requirements.in
     #   openshift
