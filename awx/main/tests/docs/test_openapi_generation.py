@@ -41,7 +41,7 @@ class TestOpenAPIGeneration:
     JSON = {}
 
     @pytest.fixture(autouse=True, scope='function')
-    def _prepare(self, get, admin):
+    def _prepare(self, get, admin, request):
         if not self.__class__.JSON:
             # drf-spectacular returns OpenAPI schema directly from schema endpoint
             url = drf_reverse('api:schema-json') + '?format=json'
@@ -50,9 +50,10 @@ class TestOpenAPIGeneration:
             if response.has_header('X-Deprecated-Paths'):
                 data['deprecated_paths'] = json.loads(response['X-Deprecated-Paths'])
 
-            data['host'] = None
-            data['schemes'] = ['https']
-            data['consumes'] = ['application/json']
+            if not request.config.getoption("--genschema"):
+                data['host'] = None
+                data['schemes'] = ['https']
+                data['consumes'] = ['application/json']
 
             revised_paths = {}
             deprecated_paths = data.pop('deprecated_paths', [])
@@ -122,6 +123,8 @@ class TestOpenAPIGeneration:
         get(path, user=admin, expect=200)
 
     def test_autogen_response_examples(self, swagger_autogen, request):
+        if request.config.getoption("--genschema"):
+            pytest.skip("Swagger 2.0 constructs (produces, examples, body params) are invalid in OAS 3.0.3")
         for pattern, node in TestOpenAPIGeneration.JSON['paths'].items():
             pattern = pattern.replace('{id}', '[0-9]+')
             pattern = pattern.replace(r'{category_slug}', r'[a-zA-Z0-9\-]+')

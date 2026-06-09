@@ -1215,7 +1215,7 @@ SPECTACULAR_SETTINGS = {
     'DEFAULT_SCHEMA_CLASS': 'awx.api.schema.CustomAutoSchema',
     'COMPONENT_SPLIT_REQUEST': True,
     # Postprocessing hook to filter CredentialType enum values
-    'POSTPROCESSING_HOOKS': ['awx.api.schema.filter_credential_type_schema'],
+    'POSTPROCESSING_HOOKS': ['awx.api.schema.filter_credential_type_schema', 'awx.api.schema.fix_format_default_conflicts'],
     'SWAGGER_UI_SETTINGS': {
         'deepLinking': True,
         'persistAuthorization': True,

@@ -53,6 +53,22 @@ def filter_credential_type_schema(
     return result
 
 
+def fix_format_default_conflicts(result, generator, request, public):
+    """
+    Remove 'format' from schema properties where the default value
+    violates the format constraint.
+
+    For example, a field with format: 'uri' and default: '' is invalid
+    because '' is not a valid URI. Removing the format from the schema
+    preserves the default while keeping the field valid.
+    """
+    for schema in result.get('components', {}).get('schemas', {}).values():
+        for prop in schema.get('properties', {}).values():
+            if isinstance(prop, dict) and 'format' in prop and prop.get('default') == '':
+                del prop['format']
+    return result
+
+
 class CustomAutoSchema(AutoSchema):
     """Custom AutoSchema to add swagger_topic to tags and handle deprecated endpoints."""
 

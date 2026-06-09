@@ -47,7 +47,6 @@ jobs:
 
       - name: Validate OpenAPI schema
         id: schema-validation
-        continue-on-error: true
         run: |
           AWX_DOCKER_ARGS='-e GITHUB_ACTIONS' \
           AWX_DOCKER_CMD='make validate-openapi-schema' \
