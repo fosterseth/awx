@@ -130,14 +130,16 @@ jobs:
             -f "ref=refs/heads/${BRANCH_NAME}" \
             -f "sha=${BASE_SHA}"
 
-          # Create blob and commit via API (commits created through the API are automatically signed by GitHub)
-          BLOB_SHA=$(gh api "repos/${SPEC_REPO}/git/blobs" \
-            -f "content=$(base64 -w 0 controller.json)" \
-            -f "encoding=base64" \
-            --jq '.sha')
+          # Create blob via API using --input to avoid ARG_MAX limit on large specs
+          BLOB_SHA=$(base64 -w 0 controller.json | tr -d '\n' | \
+            jq -Rs '{content: ., encoding: "base64"}' | \
+            gh api "repos/${SPEC_REPO}/git/blobs" --input - --jq '.sha')
+
+          # Get the tree SHA from the base commit (base_tree requires a tree SHA, not a commit SHA)
+          BASE_TREE_SHA=$(gh api "repos/${SPEC_REPO}/git/commits/${BASE_SHA}" --jq '.tree.sha')
 
           TREE_SHA=$(gh api "repos/${SPEC_REPO}/git/trees" \
-            -f "base_tree=${BASE_SHA}" \
+            -f "base_tree=${BASE_TREE_SHA}" \
             --input <(jq -n --arg blob "$BLOB_SHA" '{tree: [{path: "controller.json", mode: "100644", type: "blob", sha: $blob}]}') \
             --jq '.sha')
 
