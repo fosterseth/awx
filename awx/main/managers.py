@@ -6,6 +6,8 @@ import uuid
 from django.db import models
 from django.conf import settings
 from django.db.models.functions import Lower
+
+from awx.main.utils.common import memoize
 from awx.main.utils.filters import SmartFilter
 from awx.main.utils.pglock import advisory_lock
 from awx.main.constants import RECEPTOR_PENDING
@@ -24,6 +26,7 @@ class DeferJobCreatedManager(models.Manager):
 class HostManager(models.Manager):
     """Custom manager class for Hosts model."""
 
+    @memoize(ttl=60, cache_key='host_active_count')
     def active_count(self):
         """Return count of active, unique hosts for licensing.
         Construction of query involves:
