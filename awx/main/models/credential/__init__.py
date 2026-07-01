@@ -365,6 +365,9 @@ class Credential(PasswordFieldsModel, CommonModelNameNotUnique, ResourceMixin):
             raise ValueError('{} is not a dynamic input field'.format(field_name))
 
     def validate_role_assignment(self, actor, role_definition, **kwargs):
+        requesting_user = kwargs.get('requesting_user', None)
+        if requesting_user and requesting_user.is_superuser:
+            return
         if self.organization:
             if isinstance(actor, User):
                 if actor.is_superuser:
